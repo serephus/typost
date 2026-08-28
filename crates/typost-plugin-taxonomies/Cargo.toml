@@ -1,0 +1,12 @@
+[package]
+name = "typost-plugin-taxonomies"
+description = "Multi-taxonomy (tags, categories, ...) plugin for typost."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+typost-core = { path = "../typost-core" }
+anyhow.workspace = true

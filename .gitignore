@@ -1,0 +1,6 @@
+/.direnv
+/result
+/.codewhale
+/target
+dist/
+examples/**/lib/

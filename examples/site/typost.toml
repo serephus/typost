@@ -1,0 +1,9 @@
+entry = "home.typ"
+out = "dist"
+
+base_url = "https://example.com"
+
+[sitemap]
+
+[feed]
+section = "blog"

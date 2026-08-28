@@ -1,0 +1,22 @@
+[package]
+name = "typost"
+description = "A Typst-powered static site generator."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "typost"
+path = "src/main.rs"
+
+[dependencies]
+typost-core = { path = "../typost-core" }
+typost-plugin-encrypt = { path = "../typost-plugin-encrypt" }
+typost-plugin-feed = { path = "../typost-plugin-feed" }
+typost-plugin-sitemap = { path = "../typost-plugin-sitemap" }
+typost-plugin-taxonomies = { path = "../typost-plugin-taxonomies" }
+anyhow.workspace = true
+serde.workspace = true
+toml.workspace = true

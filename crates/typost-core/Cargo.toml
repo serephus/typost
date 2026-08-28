@@ -1,0 +1,17 @@
+[package]
+name = "typost-core"
+description = "Core engine for typost, a Typst-powered static site generator."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+typst.workspace = true
+typst-bundle.workspace = true
+typst-eval.workspace = true
+typst-kit = { workspace = true, features = ["datetime", "embedded-fonts"] }
+comemo.workspace = true
+serde.workspace = true
+anyhow.workspace = true

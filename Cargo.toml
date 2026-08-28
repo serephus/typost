@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/typost-core",
+    "crates/typost-plugin-encrypt",
+    "crates/typost-plugin-feed",
+    "crates/typost-plugin-sitemap",
+    "crates/typost-plugin-taxonomies",
+    "crates/typost",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "GLWTPL"
+repository = "https://github.com/serephus/typost"
+
+[workspace.dependencies]
+typst = "0.15.1"
+typst-bundle = "0.15.1"
+typst-eval = "0.15.1"
+typst-kit = "0.15.1"
+comemo = "0.5.1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+anyhow = "1"
