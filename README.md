@@ -1,6 +1,6 @@
 # typost
 
-Yet another new static site generator targeting typst.
+Yet another static site generator targeting typst.
 
 ## License
 

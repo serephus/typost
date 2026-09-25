@@ -106,7 +106,7 @@ impl Plugin for Feed {
             })
             .filter(|page| date_of(page).is_some())
             .collect();
-        entries.sort_by(|a, b| date_of(b).cmp(&date_of(a)));
+        entries.sort_by_key(|a| std::cmp::Reverse(date_of(a)));
         entries.truncate(self.limit);
 
         let title = self
@@ -382,7 +382,13 @@ mod tests {
     fn limit_is_respected() {
         let mut out = RenderOutput::new();
         let pages: Vec<PageMeta> = (0..5)
-            .map(|i| page(&format!("post/{i}/index.html"), &format!("P{i}"), &format!("202{i}-01-01")))
+            .map(|i| {
+                page(
+                    &format!("post/{i}/index.html"),
+                    &format!("P{i}"),
+                    &format!("202{i}-01-01"),
+                )
+            })
             .collect();
         let manifest = SiteManifest {
             title: None,
@@ -390,7 +396,10 @@ mod tests {
             entries: Vec::new(),
         };
 
-        Feed::new("https://example.com").limit(2).post(&mut out, &manifest).unwrap();
+        Feed::new("https://example.com")
+            .limit(2)
+            .post(&mut out, &manifest)
+            .unwrap();
         let xml = String::from_utf8(out.get("atom.xml").unwrap().to_vec()).unwrap();
         assert_eq!(xml.matches("<entry>").count(), 2);
     }

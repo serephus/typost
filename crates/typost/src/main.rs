@@ -134,16 +134,16 @@ fn register_plugins(site: Site, config: &Config) -> Result<Site> {
     site = site.plugin(Taxonomies::new());
 
     if let Some(sitemap) = &config.sitemap {
-        let base = config.base_url(sitemap.base_url.as_deref()).context(
-            "`[sitemap]` needs a base URL (set `base_url` top-level or in `[sitemap]`)",
-        )?;
+        let base = config
+            .base_url(sitemap.base_url.as_deref())
+            .context("`[sitemap]` needs a base URL (set `base_url` top-level or in `[sitemap]`)")?;
         site = site.plugin(Sitemap::new(base));
     }
 
     if let Some(feed) = &config.feed {
-        let base = config.base_url(feed.base_url.as_deref()).context(
-            "`[feed]` needs a base URL (set `base_url` top-level or in `[feed]`)",
-        )?;
+        let base = config
+            .base_url(feed.base_url.as_deref())
+            .context("`[feed]` needs a base URL (set `base_url` top-level or in `[feed]`)")?;
         let mut plugin = Feed::new(base);
         if let Some(path) = &feed.path {
             plugin = plugin.path(path);
