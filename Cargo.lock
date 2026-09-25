@@ -2568,7 +2568,6 @@ dependencies = [
  "typost-core",
 ]
 
-
 [[package]]
 name = "typst"
 version = "0.15.1"
