@@ -23,5 +23,5 @@ typst-eval = "0.15.1"
 typst-kit = "0.15.1"
 comemo = "0.5.1"
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+toml = "1.1"
 anyhow = "1"
