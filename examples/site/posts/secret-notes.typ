@@ -17,7 +17,7 @@ This paragraph is public: anyone can read it.
 // Everything after this directive is encrypted, to the end of the file.
 #show: encrypted.with(
   password: "hunter2",
-  hint: "This note is private — ask me for the password.",
+  hint: [This note is *private* — ask me on #link("https://t.me/serephus")[Telegram].],
 )
 
 == The locked part

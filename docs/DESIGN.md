@@ -240,7 +240,13 @@ Build-time encrypt, browser decrypt. Two forms:
 ```
 
 `hint` is the prompt shown in the lock UI (default: "This part is encrypted.
-Enter the password to read it."). `password` is required.
+Enter the password to read it."). It may be a string or content, so it can be
+rich text — emphasis, links, and so on. `password` is required.
+
+The prompt is rendered by Typst, not assembled from a manifest string: the
+helper wraps it in a `<template class="typost-hint">` before each region, and
+the plugin lifts those out (in document order) into the lock UI, then removes
+them from the output.
 
 The plugin runs as `Plugin::post`. It replaces each region's contents with a
 lock form and inlines the ciphertext plus a small decrypt shim. Theme chrome and
