@@ -63,8 +63,9 @@ impl Plugin for Encrypt {
     }
 
     fn post(&self, out: &mut RenderOutput, manifest: &SiteManifest) -> Result<()> {
-        // Inline `#encrypted(...)` regions, grouped by page in document order.
-        let mut regions: BTreeMap<String, Vec<RegionLock>> = BTreeMap::new();
+        // Encrypted regions, grouped by page in document order. Passwords come
+        // from the manifest; prompts are lifted from the page (see below).
+        let mut pages: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for entry in &manifest.entries {
             if entry.kind != "encrypted" {
                 continue;
@@ -78,25 +79,40 @@ impl Plugin for Encrypt {
             if password.is_empty() {
                 continue;
             }
-            let hint = entry
-                .data
-                .get("hint")
-                .and_then(FrontMatter::as_str)
-                .map(str::to_owned);
-            regions.entry(route.clone()).or_default().push(RegionLock {
-                password: password.to_owned(),
-                hint,
-            });
+            pages
+                .entry(route.clone())
+                .or_default()
+                .push(password.to_owned());
         }
 
-        for (route, locks) in &regions {
+        for (route, passwords) in &pages {
             let html = out
                 .get(route)
                 .map(<[u8]>::to_vec)
                 .with_context(|| format!("encrypt: page `{route}` was not rendered"))?;
             let html = String::from_utf8(html)
                 .with_context(|| format!("encrypt: page `{route}` is not UTF-8"))?;
-            let encrypted = encrypt_regions(&html, locks, self.iterations)?;
+
+            // The helper emits one hint template per region, in order, so they
+            // line up with the passwords.
+            let (html, hints) = take_hint_templates(&html);
+            if hints.len() > passwords.len() {
+                bail!(
+                    "encrypt: page `{route}` has {} hint template(s) but {} encrypted region(s)",
+                    hints.len(),
+                    passwords.len()
+                );
+            }
+            let locks: Vec<RegionLock> = passwords
+                .iter()
+                .enumerate()
+                .map(|(index, password)| RegionLock {
+                    password: password.clone(),
+                    hint: hints.get(index).filter(|hint| !hint.is_empty()).cloned(),
+                })
+                .collect();
+
+            let encrypted = encrypt_regions(&html, &locks, self.iterations)?;
             out.insert(route.clone(), encrypted.into_bytes());
         }
 
@@ -104,7 +120,10 @@ impl Plugin for Encrypt {
     }
 }
 
-/// One `#encrypted(...)` region: its password and optional prompt text.
+/// One `#encrypted(...)` region: its password and optional prompt HTML.
+///
+/// The prompt is rendered by Typst (so it may be rich text) and lifted out of
+/// the page's `<template class="typost-hint">`; `None` means the default.
 struct RegionLock {
     password: String,
     hint: Option<String>,
@@ -180,6 +199,44 @@ fn find_matching_div_close(html: &str, start: usize) -> Option<usize> {
     None
 }
 
+/// Extract the hint templates from a page and return its HTML without them.
+///
+/// The Typst helper emits one `<template class="typost-hint">` before each
+/// region, so the contents line up with the manifest's regions in document
+/// order. The templates are inert, but are removed so the rendered prompt is
+/// not duplicated in the output.
+fn take_hint_templates(html: &str) -> (String, Vec<String>) {
+    const OPEN: &str = "<template";
+    const CLOSE: &str = "</template>";
+    const MARKER: &str = "typost-hint";
+
+    let mut out = String::with_capacity(html.len());
+    let mut hints = Vec::new();
+    let mut cursor = 0;
+
+    while let Some(offset) = html[cursor..].find(OPEN) {
+        let start = cursor + offset;
+        let Some(open_end) = html[start..].find('>').map(|end| start + end + 1) else {
+            break;
+        };
+        // Leave anything that is not one of our hint templates alone.
+        if !html[start..open_end].contains(MARKER) {
+            out.push_str(&html[cursor..open_end]);
+            cursor = open_end;
+            continue;
+        }
+        let Some(close) = html[open_end..].find(CLOSE).map(|end| open_end + end) else {
+            break;
+        };
+        out.push_str(&html[cursor..start]);
+        hints.push(html[open_end..close].trim().to_owned());
+        cursor = close + CLOSE.len();
+    }
+
+    out.push_str(&html[cursor..]);
+    (out, hints)
+}
+
 /// The plugin's Typst helper. It is materialized into `lib/typost/encrypted.typ`
 /// so pages can `#import` it.
 const ENCRYPTED_TYP: &str = r#"
@@ -198,6 +255,9 @@ const ENCRYPTED_TYP: &str = r#"
 /// #encrypted(password: "pw", hint: "...")[ ...content... ]
 /// ```
 ///
+/// `hint` may be a string or content, so the prompt can be rich text (emphasis,
+/// links, ...). It is rendered here and lifted into the lock UI by the plugin.
+///
 /// The password travels through the manifest (never into the output). The
 /// plugin replaces the region's contents with a lock UI and inline ciphertext;
 /// the browser decrypts it with WebCrypto.
@@ -206,7 +266,13 @@ const ENCRYPTED_TYP: &str = r#"
     password != none and password != "",
     message: "encrypted: a non-empty `password` is required",
   )
-  metadata((typost: (kind: "encrypted", password: password, hint: hint)))
+  metadata((typost: (kind: "encrypted", password: password)))
+  // An empty template means "use the default prompt".
+  html.elem(
+    "template",
+    if hint == none { [] } else { hint },
+    attrs: (class: "typost-hint"),
+  )
   html.elem("div", body, attrs: (class: "typost-encrypted"))
 }
 "#;
@@ -268,7 +334,12 @@ fn lock_html(locked: &Locked, hint: Option<&str>) -> String {
     let cipher = B64.encode(&locked.ciphertext);
     let iterations = locked.iterations;
     let params = format!("{{\"salt\":\"{salt}\",\"iv\":\"{iv}\",\"iterations\":{iterations}}}");
-    let hint = escape_html(hint.unwrap_or(DEFAULT_HINT));
+    // A custom hint is already rendered by Typst and may be rich text; the
+    // default prompt is plain text and is escaped.
+    let hint = match hint {
+        Some(html) if !html.is_empty() => html.to_owned(),
+        _ => escape_html(DEFAULT_HINT),
+    };
 
     let mut html = String::with_capacity(
         params.len() + cipher.len() + LOCK_STYLE.len() + LOCK_SCRIPT.len() + 512,
@@ -413,7 +484,9 @@ mod tests {
     fn encrypts_inline_regions_in_order() {
         let html = "<main id=\"typost-content\">\
                     <p>public</p>\
+                    <template class=\"typost-hint\">Ask <strong>me</strong> — Type &lt;the&gt; word</template>\
                     <div class=\"typost-encrypted\"><p>secret one <b>bold</b></p></div>\
+                    <template class=\"typost-hint\"></template>\
                     <div class=\"typost-encrypted\"><p>secret two</p></div>\
                     </main>";
         let mut out = RenderOutput::new();
@@ -426,7 +499,7 @@ mod tests {
                 MetadataEntry {
                     kind: "encrypted".into(),
                     route: Some("page.html".into()),
-                    data: fm(&[("password", "pw1"), ("hint", "Type <the> word")]),
+                    data: fm(&[("password", "pw1")]),
                 },
                 MetadataEntry {
                     kind: "encrypted".into(),
@@ -446,10 +519,12 @@ mod tests {
         assert!(result.contains("public"));
         assert_eq!(result.matches("typost-lock\"").count(), 2);
         assert_eq!(result.matches("typost-encrypted").count(), 2);
-        // A custom hint is rendered and HTML-escaped.
-        assert!(result.contains("Type &lt;the&gt; word"));
-        // Regions without a hint get the default prompt.
+        // The first region's prompt is lifted in as rendered (rich) HTML...
+        assert!(result.contains("Ask <strong>me</strong> — Type &lt;the&gt; word"));
+        // ...the second has none, so it gets the default prompt, and the
+        // templates themselves are removed from the output.
         assert!(result.contains("This part is encrypted"));
+        assert!(!result.contains("<template"));
     }
 
     #[test]
@@ -486,6 +561,44 @@ mod tests {
         let html = "<div class=\"typost-encrypted\">你好 <div>世界 — café</div> 再见</div>tail";
         let end = find_matching_div_close(html, 0).unwrap();
         assert_eq!(&html[end..], "tail");
+    }
+
+    #[test]
+    fn lifts_rich_hint_from_template() {
+        let html = "<main id=\"typost-content\">\
+                    <template class=\"typost-hint\">Ask <strong>me</strong> on <a href=\"https://t.me/x\">Telegram</a></template>\
+                    <div class=\"typost-encrypted\">secret</div>\
+                    </main>";
+        let mut out = RenderOutput::new();
+        out.insert("page.html", html.as_bytes().to_vec());
+        let manifest = SiteManifest {
+            title: None,
+            pages: Vec::new(),
+            entries: vec![MetadataEntry {
+                kind: "encrypted".into(),
+                route: Some("page.html".into()),
+                data: fm(&[("password", "pw")]),
+            }],
+        };
+
+        Encrypt::with_iterations(1000)
+            .post(&mut out, &manifest)
+            .unwrap();
+
+        let result = String::from_utf8(out.get("page.html").unwrap().to_vec()).unwrap();
+        assert!(
+            result.contains("Ask <strong>me</strong> on <a href=\"https://t.me/x\">Telegram</a>")
+        );
+        assert!(!result.contains("<template"));
+    }
+
+    #[test]
+    fn take_hint_templates_ignores_foreign_templates() {
+        let (html, hints) = take_hint_templates(
+            "<template class=\"other\">x</template><template class=\"typost-hint\"> y </template>",
+        );
+        assert_eq!(html, "<template class=\"other\">x</template>");
+        assert_eq!(hints, vec!["y".to_owned()]);
     }
 
     #[test]
