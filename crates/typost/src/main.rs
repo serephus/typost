@@ -8,6 +8,7 @@ use typost_core::{BuildOptions, Site};
 use typost_plugin_encrypt::Encrypt;
 use typost_plugin_feed::Feed;
 use typost_plugin_sitemap::Sitemap;
+use typost_plugin_spoiler::Spoiler;
 use typost_plugin_taxonomies::Taxonomies;
 
 /// `typost.toml`.
@@ -132,6 +133,9 @@ fn register_plugins(site: Site, config: &Config) -> Result<Site> {
     // Contributes the `typost.taxonomies` module; sites declare their
     // taxonomies (tags, categories, difficulty, ...) in Typst.
     site = site.plugin(Taxonomies::new());
+
+    // Contributes `lib/typost/spoiler.typ` (`#spoiler[...]`) and its CSS.
+    site = site.plugin(Spoiler::new());
 
     if let Some(sitemap) = &config.sitemap {
         let base = config

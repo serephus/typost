@@ -98,7 +98,7 @@ call `page` directly inside a loop in the entry.
 ```
 typost-core   engine: World, manifest, plugin trait, pipeline. Minimal.
 typost        binary: CLI, wires the built-in plugins.
-typost-plugin-sitemap / -encrypt / -taxonomies / -feed
+typost-plugin-sitemap / -encrypt / -taxonomies / -feed / -spoiler
               one crate per first-party plugin.
 ```
 
@@ -316,6 +316,20 @@ It is a `post` plugin: it reads each entry's rendered `<main id="typost-content"
 region, makes root-relative URLs absolute, and embeds it as `content type="html"`.
 Register it after `Encrypt` so encrypted posts contribute ciphertext, not
 plaintext. `base_url` is shared with `Sitemap` via the top-level config key.
+
+## Spoiler (plugin)
+
+Contributes `lib/typost/spoiler.typ` with `#spoiler[...]`, which hides an inline
+run (or a block, with `block: true`) behind a translucent hint and reveals it on
+hover or keyboard focus:
+
+```typst
+The butler did it: #spoiler[Colonel Mustard, in the library].
+```
+
+It is a `post` plugin with a small self-contained stylesheet: it injects the
+`<style>` into the `<head>` of every page that contains a spoiler. The look is
+themed through `--spoiler-bg` / `--spoiler-bg-revealed`, with gruvbox fallbacks.
 
 ## Decisions
 

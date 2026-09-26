@@ -16,6 +16,7 @@ typost-core = { path = "../typost-core" }
 typost-plugin-encrypt = { path = "../typost-plugin-encrypt" }
 typost-plugin-feed = { path = "../typost-plugin-feed" }
 typost-plugin-sitemap = { path = "../typost-plugin-sitemap" }
+typost-plugin-spoiler = { path = "../typost-plugin-spoiler" }
 typost-plugin-taxonomies = { path = "../typost-plugin-taxonomies" }
 anyhow.workspace = true
 serde.workspace = true

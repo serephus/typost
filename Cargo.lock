@@ -2564,6 +2564,7 @@ dependencies = [
  "typost-plugin-encrypt",
  "typost-plugin-feed",
  "typost-plugin-sitemap",
+ "typost-plugin-spoiler",
  "typost-plugin-taxonomies",
 ]
 
@@ -2602,6 +2603,14 @@ dependencies = [
 
 [[package]]
 name = "typost-plugin-sitemap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "typost-core",
+]
+
+[[package]]
+name = "typost-plugin-spoiler"
 version = "0.1.0"
 dependencies = [
  "anyhow",
