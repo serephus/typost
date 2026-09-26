@@ -23,6 +23,17 @@ are imported where they are needed.
 
 Spoilers hide text until you hover: #spoiler[the answer is 42].
 
+#spoiler(block: true)[
+  A hidden *block*.
+
+  It has several paragraphs and a list:
+
+  - one
+  - two
+
+  And some `inline code`.
+]
+
 == Building indexes from the manifest
 
 The home and blog pages do not carry a hand-maintained list. They query the

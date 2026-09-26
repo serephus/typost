@@ -74,12 +74,16 @@ const SPOILER_TYP: &str = r#"
 /// The butler did it: #spoiler[Colonel Mustard, in the library].
 /// ```
 ///
-/// Pass `block: true` to hide a block (paragraphs, lists, ...) rather than an
-/// inline run.
+/// Pass `block: true` to hide a block (paragraphs, lists, code, ...) rather
+/// than an inline run. Blocks are blurred so rich content is hidden too, not
+/// just text.
 #let spoiler(body, block: false) = html.elem(
   if block { "div" } else { "span" },
   body,
-  attrs: (class: "typost-spoiler", tabindex: "0"),
+  attrs: (
+    class: if block { "typost-spoiler typost-spoiler-block" } else { "typost-spoiler" },
+    tabindex: "0",
+  ),
 )
 "#;
 
@@ -93,7 +97,10 @@ border-radius:.25em;padding:0 .3em;cursor:help;transition:color .15s ease,\
 background-color .15s ease;-webkit-user-select:none;user-select:none}\
 .typost-spoiler:hover,.typost-spoiler:focus-visible{color:inherit;\
 background:var(--spoiler-bg-revealed,transparent);-webkit-user-select:text;\
-user-select:text}";
+user-select:text}\
+.typost-spoiler-block{color:inherit;background:none;border-radius:0;padding:0;\
+filter:blur(var(--spoiler-blur,.4em));transition:filter .15s ease}\
+.typost-spoiler-block:hover,.typost-spoiler-block:focus-visible{filter:none}";
 
 #[cfg(test)]
 mod tests {
@@ -118,6 +125,7 @@ mod tests {
         let html = String::from_utf8(out.get("index.html").unwrap().to_vec()).unwrap();
         assert!(html.contains("<style class=\"typost-spoiler-style\">"));
         assert!(html.contains(".typost-spoiler:hover"));
+        assert!(html.contains(".typost-spoiler-block"));
         // Injected into the head, before any content.
         assert!(html.find("<style").unwrap() < html.find("<body>").unwrap());
     }
