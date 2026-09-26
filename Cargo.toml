@@ -5,6 +5,7 @@ members = [
     "crates/typost-plugin-encrypt",
     "crates/typost-plugin-feed",
     "crates/typost-plugin-sitemap",
+    "crates/typost-plugin-spoiler",
     "crates/typost-plugin-taxonomies",
     "crates/typost",
 ]

@@ -1,4 +1,5 @@
 #import "../theme.typ": page, callout
+#import "../lib/typost/spoiler.typ": spoiler
 
 #show: page.with(
   route: "blog/collections-and-functions/index.html",
@@ -19,6 +20,19 @@ are imported where they are needed.
 
 #let points = ("one", "two", "three")
 #enum(..points.map(point => [#point]))
+
+Spoilers hide text until you hover: #spoiler[the answer is 42].
+
+#spoiler(block: true)[
+  A hidden *block*.
+
+  It has several paragraphs and a list:
+
+  - one
+  - two
+
+  And some `inline code`.
+]
 
 == Building indexes from the manifest
 
