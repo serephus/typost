@@ -152,16 +152,23 @@ fn encrypt_regions(html: &str, locks: &[RegionLock], iterations: u32) -> Result<
 }
 
 /// Find the byte index just past the `</div>` matching the `<div>` at `start`.
+///
+/// Scans bytes rather than `&str` slices: advancing one byte at a time can land
+/// inside a multi-byte UTF-8 character (e.g. CJK), which would panic when
+/// sliced. The tags themselves are ASCII, so the returned offsets are always
+/// character boundaries.
 fn find_matching_div_close(html: &str, start: usize) -> Option<usize> {
-    const CLOSE: &str = "</div>";
+    const OPEN: &[u8] = b"<div";
+    const CLOSE: &[u8] = b"</div>";
+    let bytes = html.as_bytes();
     let mut depth = 0usize;
     let mut pos = start;
-    while pos < html.len() {
-        if html[pos..].starts_with("<div") {
+    while pos < bytes.len() {
+        if bytes[pos..].starts_with(OPEN) {
             depth += 1;
-            pos += 4;
-        } else if html[pos..].starts_with(CLOSE) {
-            depth -= 1;
+            pos += OPEN.len();
+        } else if bytes[pos..].starts_with(CLOSE) {
+            depth = depth.checked_sub(1)?;
             if depth == 0 {
                 return Some(pos + CLOSE.len());
             }
@@ -443,6 +450,42 @@ mod tests {
         assert!(result.contains("Type &lt;the&gt; word"));
         // Regions without a hint get the default prompt.
         assert!(result.contains("This part is encrypted"));
+    }
+
+    #[test]
+    fn encrypts_non_ascii_regions() {
+        let html = "<main id=\"typost-content\">\
+                    <p>public</p>\
+                    <div class=\"typost-encrypted\"><p>你好，世界 — café ☃</p></div>\
+                    </main>";
+        let mut out = RenderOutput::new();
+        out.insert("page.html", html.as_bytes().to_vec());
+        let manifest = SiteManifest {
+            title: None,
+            pages: Vec::new(),
+            entries: vec![MetadataEntry {
+                kind: "encrypted".into(),
+                route: Some("page.html".into()),
+                data: fm(&[("password", "pw")]),
+            }],
+        };
+
+        Encrypt::with_iterations(1000)
+            .post(&mut out, &manifest)
+            .unwrap();
+
+        let result = String::from_utf8(out.get("page.html").unwrap().to_vec()).unwrap();
+        assert!(!result.contains("你好"));
+        assert!(result.contains("public"));
+        assert_eq!(result.matches("typost-lock\"").count(), 1);
+    }
+
+    #[test]
+    fn finds_matching_div_close_around_non_ascii() {
+        // Nested divs and multi-byte characters around and inside them.
+        let html = "<div class=\"typost-encrypted\">你好 <div>世界 — café</div> 再见</div>tail";
+        let end = find_matching_div_close(html, 0).unwrap();
+        assert_eq!(&html[end..], "tail");
     }
 
     #[test]

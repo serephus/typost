@@ -25,6 +25,8 @@ This paragraph is public: anyone can read it.
 This region is encrypted at build time and decrypted in the browser with
 WebCrypto. Its plaintext is not in the output.
 
+Unicode survives the round-trip too: 你好，世界 — café ☃.
+
 #callout[
   View the page source: the text below does not appear. Only the ciphertext
   and a small decrypt shim ship, for this region alone.
