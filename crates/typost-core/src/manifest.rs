@@ -28,6 +28,12 @@ pub enum FrontMatter {
     Array(Vec<FrontMatter>),
     /// A dictionary / map.
     Dict(BTreeMap<String, FrontMatter>),
+    /// A Typst value typost's typed decode does not carry (content, lengths,
+    /// colors, ...), holding the Typst type name. Distinct from [`None`], which
+    /// means "absent", so plugins can tell "present but undecodable" apart.
+    ///
+    /// [`None`]: FrontMatter::None
+    Unsupported(String),
 }
 
 impl FrontMatter {
@@ -48,7 +54,40 @@ impl FrontMatter {
                     .map(|(k, v)| (k.as_str().to_owned(), Self::from_value(v)))
                     .collect(),
             ),
-            _ => Self::None,
+            other => Self::Unsupported(other.ty().to_string()),
+        }
+    }
+
+    /// Collect the values that could not be decoded, as `(path, type name)`.
+    ///
+    /// Paths are dotted for dictionaries and indexed for arrays (e.g.
+    /// `hint`, `tags[0]`).
+    pub fn unsupported(&self) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        self.collect_unsupported("", &mut out);
+        out
+    }
+
+    /// Recursive half of [`unsupported`](Self::unsupported).
+    fn collect_unsupported(&self, path: &str, out: &mut Vec<(String, String)>) {
+        match self {
+            Self::Unsupported(ty) => out.push((path.to_owned(), ty.clone())),
+            Self::Array(items) => {
+                for (index, item) in items.iter().enumerate() {
+                    item.collect_unsupported(&format!("{path}[{index}]"), out);
+                }
+            }
+            Self::Dict(map) => {
+                for (key, value) in map {
+                    let child = if path.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{path}.{key}")
+                    };
+                    value.collect_unsupported(&child, out);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -120,4 +159,45 @@ pub struct MetadataEntry {
     pub route: Option<String>,
     /// The entry's `typost` dictionary (including `kind`).
     pub data: FrontMatter,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FrontMatter;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn collects_undecodable_values_with_paths() {
+        let mut dict = BTreeMap::new();
+        dict.insert("ok".to_owned(), FrontMatter::Str("x".to_owned()));
+        dict.insert(
+            "rich".to_owned(),
+            FrontMatter::Unsupported("content".to_owned()),
+        );
+        dict.insert(
+            "tags".to_owned(),
+            FrontMatter::Array(vec![
+                FrontMatter::Str("a".to_owned()),
+                FrontMatter::Unsupported("length".to_owned()),
+            ]),
+        );
+        dict.insert(
+            "nested".to_owned(),
+            FrontMatter::Dict(BTreeMap::from([(
+                "deep".to_owned(),
+                FrontMatter::Unsupported("color".to_owned()),
+            )])),
+        );
+
+        let mut found = FrontMatter::Dict(dict).unsupported();
+        found.sort();
+        assert_eq!(
+            found,
+            vec![
+                ("nested.deep".to_owned(), "color".to_owned()),
+                ("rich".to_owned(), "content".to_owned()),
+                ("tags[1]".to_owned(), "length".to_owned()),
+            ]
+        );
+    }
 }

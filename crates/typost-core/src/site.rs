@@ -61,6 +61,12 @@ impl Site {
         self
     }
 
+    /// Register a list of boxed plugins (e.g. from the CLI).
+    pub fn plugins(mut self, plugins: Vec<Box<dyn Plugin>>) -> Self {
+        self.plugins.extend(plugins);
+        self
+    }
+
     /// Run the full pipeline.
     pub fn build(&self) -> Result<()> {
         build(&self.options, &self.plugins)
@@ -72,20 +78,13 @@ impl Site {
 /// `Config → typst → eval-only → prepare → render → post → emit`
 pub fn build(options: &BuildOptions, plugins: &[Box<dyn Plugin>]) -> Result<()> {
     // 1. Let plugins contribute Typst sources to the World (after the stdlib,
-    //    so plugins can override it if they need to).
-    let mut overlay = TypstOverlay::new();
-    crate::stdlib::add_to(&mut overlay);
-    for plugin in plugins {
-        plugin
-            .typst(&mut overlay)
-            .with_context(|| format!("plugin `{}` failed in its `typst` stage", plugin.name()))?;
-    }
-
-    // 2. Materialize the stdlib (and plugin Typst modules) into `lib/` so that
-    //    plain `typst` and Tinymist can resolve them.
+    //    so plugins can override it if they need to), and materialize the
+    //    combined overlay into `lib/` so plain `typst` and Tinymist can resolve
+    //    it.
+    let overlay = collect_typst(plugins)?;
     materialize_overlay(&options.root, &overlay)?;
 
-    let world = TypostWorld::new(options.root.clone(), &options.entry, overlay);
+    let world = TypostWorld::new(options.root.clone(), &options.entry, overlay)?;
 
     // 3. Eval-only pass: lift the typed manifest out of the Typst program.
     let mut manifest = extract_manifest(&world)
@@ -108,9 +107,32 @@ pub fn build(options: &BuildOptions, plugins: &[Box<dyn Plugin>]) -> Result<()> 
             .with_context(|| format!("plugin `{}` failed in its `post` stage", plugin.name()))?;
     }
 
-    // 7. Write everything to disk.
-    emit(&output, &options.out)?;
+    // 7. Write everything to disk, replacing any previous build.
+    emit(&output, &options.root, &options.out)?;
     Ok(())
+}
+
+/// Collect the Typst sources contributed by the stdlib and the plugins.
+///
+/// The stdlib is added first, then each plugin in registration order, so a
+/// plugin can override a stdlib file if it needs to.
+pub fn collect_typst(plugins: &[Box<dyn Plugin>]) -> Result<TypstOverlay> {
+    let mut overlay = TypstOverlay::new();
+    crate::stdlib::add_to(&mut overlay)?;
+    for plugin in plugins {
+        plugin
+            .typst(&mut overlay)
+            .with_context(|| format!("plugin `{}` failed in its `typst` stage", plugin.name()))?;
+    }
+    Ok(overlay)
+}
+
+/// Materialize the stdlib and plugin Typst sources into `<root>/lib`.
+///
+/// Shared by `typost build` and `typost init`, so editors see the same helpers
+/// before the first build.
+pub fn materialize_typst(root: &Path, plugins: &[Box<dyn Plugin>]) -> Result<()> {
+    materialize_overlay(root, &collect_typst(plugins)?)
 }
 
 /// Write plugin-contributed Typst sources to disk so editors can resolve them.
@@ -148,7 +170,11 @@ fn extract_manifest(world: &TypostWorld) -> Result<SiteManifest> {
 
     let content = module.content();
     let mut manifest = SiteManifest::default();
-    walk(&content, None, &mut manifest);
+    let mut problems = Vec::new();
+    walk(&content, None, &mut manifest, &mut problems);
+    for problem in &problems {
+        eprintln!("warning: {problem}");
+    }
 
     let warnings = sink.warnings();
     if !warnings.is_empty() {
@@ -160,28 +186,38 @@ fn extract_manifest(world: &TypostWorld) -> Result<SiteManifest> {
 
 /// Walk evaluated content, collecting `typost` metadata. Entries inside a
 /// `document` are tagged with that document's route.
-fn walk(content: &Content, route: Option<&str>, manifest: &mut SiteManifest) {
+fn walk(
+    content: &Content,
+    route: Option<&str>,
+    manifest: &mut SiteManifest,
+    problems: &mut Vec<String>,
+) {
     if let Some(metadata) = content.to_packed::<MetadataElem>() {
-        parse_metadata(metadata, route, manifest);
+        parse_metadata(metadata, route, manifest, problems);
     }
 
     if let Some(document) = content.to_packed::<DocumentElem>() {
         let doc_route = document.path.as_ref().get_without_slash().to_owned();
-        walk(&document.body, Some(&doc_route), manifest);
+        walk(&document.body, Some(&doc_route), manifest, problems);
     } else {
         for (_, value) in content.fields() {
-            walk_value(value, route, manifest);
+            walk_value(value, route, manifest, problems);
         }
     }
 }
 
 /// Walk a field value (content or an array of them).
-fn walk_value(value: Value, route: Option<&str>, manifest: &mut SiteManifest) {
+fn walk_value(
+    value: Value,
+    route: Option<&str>,
+    manifest: &mut SiteManifest,
+    problems: &mut Vec<String>,
+) {
     match value {
-        Value::Content(content) => walk(&content, route, manifest),
+        Value::Content(content) => walk(&content, route, manifest, problems),
         Value::Array(array) => {
             for value in array {
-                walk_value(value, route, manifest);
+                walk_value(value, route, manifest, problems);
             }
         }
         _ => {}
@@ -193,6 +229,7 @@ fn parse_metadata(
     metadata: &Packed<MetadataElem>,
     route: Option<&str>,
     manifest: &mut SiteManifest,
+    problems: &mut Vec<String>,
 ) {
     let Value::Dict(outer) = &metadata.value else {
         return;
@@ -201,23 +238,34 @@ fn parse_metadata(
         return;
     };
     let Ok(Value::Str(kind)) = typost.get("kind") else {
+        problems.push("a `typost` metadata entry has no string `kind`".into());
         return;
     };
 
     match kind.as_str() {
-        "site" => {
-            if let Ok(Value::Str(title)) = typost.get("title") {
-                manifest.title = Some(title.as_str().to_owned());
-            }
-        }
+        "site" => match typost.get("title") {
+            Ok(Value::Str(title)) => manifest.title = Some(title.as_str().to_owned()),
+            Ok(Value::None) | Err(_) => {}
+            Ok(other) => problems.push(format!(
+                "the site `title` must be a string, found a `{}` value",
+                other.ty()
+            )),
+        },
         "page" => {
             let Ok(Value::Str(route)) = typost.get("route") else {
+                problems.push("a `page` entry has no string `route`".into());
                 return;
             };
             let data = typost
                 .get("data")
                 .map(FrontMatter::from_value)
                 .unwrap_or_default();
+            for (path, ty) in data.unsupported() {
+                problems.push(format!(
+                    "page `{route}`: front matter `{path}` is a `{ty}` value, \
+                     which typost cannot decode"
+                ));
+            }
             manifest.pages.push(PageMeta {
                 route: route.as_str().to_owned(),
                 src: None,
@@ -327,8 +375,9 @@ fn is_tag_boundary(text: &str, tag: &str) -> bool {
     )
 }
 
-/// Write the rendered files to disk.
-fn emit(output: &RenderOutput, dir: &Path) -> Result<()> {
+/// Write the rendered files to disk, replacing any previous build.
+fn emit(output: &RenderOutput, root: &Path, dir: &Path) -> Result<()> {
+    clean(dir, root)?;
     for (path, bytes) in &output.files {
         let full = dir.join(path);
         if let Some(parent) = full.parent() {
@@ -338,6 +387,32 @@ fn emit(output: &RenderOutput, dir: &Path) -> Result<()> {
         std::fs::write(&full, bytes)
             .with_context(|| format!("failed to write `{}`", full.display()))?;
     }
+    Ok(())
+}
+
+/// Remove a previous build's output directory.
+///
+/// Refuses to delete the project root or any ancestor of it, so a misconfigured
+/// `out` cannot wipe the sources.
+fn clean(dir: &Path, root: &Path) -> Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    let dir = dir
+        .canonicalize()
+        .with_context(|| format!("failed to resolve `{}`", dir.display()))?;
+    let root = root
+        .canonicalize()
+        .with_context(|| format!("failed to resolve `{}`", root.display()))?;
+    if root.starts_with(&dir) {
+        bail!(
+            "refusing to clean `{}`: it contains the project root `{}`",
+            dir.display(),
+            root.display()
+        );
+    }
+    std::fs::remove_dir_all(&dir)
+        .with_context(|| format!("failed to clean `{}`", dir.display()))?;
     Ok(())
 }
 
@@ -359,7 +434,20 @@ fn format_diagnostics(diags: &[SourceDiagnostic]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::relocate_endnotes;
+    use super::{clean, relocate_endnotes};
+
+    #[test]
+    fn clean_refuses_the_project_root() {
+        let dir = std::env::temp_dir().join(format!("typost-clean-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let error = clean(&dir, &dir).expect_err("should refuse the root");
+        assert!(format!("{error:?}").contains("refusing"));
+        assert!(dir.exists(), "the root must be left alone");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn moves_endnotes_into_content_region() {

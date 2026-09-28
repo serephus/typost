@@ -58,7 +58,7 @@ impl Plugin for Encrypt {
     }
 
     fn typst(&self, overlay: &mut TypstOverlay) -> Result<()> {
-        overlay.add("lib/typost/encrypted.typ", ENCRYPTED_TYP);
+        overlay.add("lib/typost/encrypted.typ", ENCRYPTED_TYP)?;
         Ok(())
     }
 
@@ -239,43 +239,7 @@ fn take_hint_templates(html: &str) -> (String, Vec<String>) {
 
 /// The plugin's Typst helper. It is materialized into `lib/typost/encrypted.typ`
 /// so pages can `#import` it.
-const ENCRYPTED_TYP: &str = r#"
-/// Mark a region whose content should be encrypted at build time.
-///
-/// Use it either as a selectorless show rule (encrypts the rest of the file):
-///
-/// ```typst
-/// #show: encrypted.with(password: "pw", hint: "Ask me for the password.")
-/// ...content...
-/// ```
-///
-/// or around a block:
-///
-/// ```typst
-/// #encrypted(password: "pw", hint: "...")[ ...content... ]
-/// ```
-///
-/// `hint` may be a string or content, so the prompt can be rich text (emphasis,
-/// links, ...). It is rendered here and lifted into the lock UI by the plugin.
-///
-/// The password travels through the manifest (never into the output). The
-/// plugin replaces the region's contents with a lock UI and inline ciphertext;
-/// the browser decrypts it with WebCrypto.
-#let encrypted(body, password: none, hint: none) = {
-  assert(
-    password != none and password != "",
-    message: "encrypted: a non-empty `password` is required",
-  )
-  metadata((typost: (kind: "encrypted", password: password)))
-  // An empty template means "use the default prompt".
-  html.elem(
-    "template",
-    if hint == none { [] } else { hint },
-    attrs: (class: "typost-hint"),
-  )
-  html.elem("div", body, attrs: (class: "typost-encrypted"))
-}
-"#;
+const ENCRYPTED_TYP: &str = include_str!("../typst/encrypted.typ");
 
 /// A locked payload.
 struct Locked {
@@ -338,14 +302,16 @@ fn lock_html(locked: &Locked, hint: Option<&str>) -> String {
     // default prompt is plain text and is escaped.
     let hint = match hint {
         Some(html) if !html.is_empty() => html.to_owned(),
-        _ => escape_html(DEFAULT_HINT),
+        _ => typost_core::html::escape(DEFAULT_HINT),
     };
 
     let mut html = String::with_capacity(
-        params.len() + cipher.len() + LOCK_STYLE.len() + LOCK_SCRIPT.len() + 512,
+        params.len() + cipher.len() + LOCK_CSS.len() + LOCK_SCRIPT.len() + 512,
     );
     html.push_str("<div class=\"typost-lock\">");
-    html.push_str(LOCK_STYLE);
+    html.push_str("<style>");
+    html.push_str(LOCK_CSS);
+    html.push_str("</style>");
     html.push_str("<form class=\"typost-lock-form\">");
     html.push_str("<p class=\"typost-lock-hint\">");
     html.push_str(&hint);
@@ -370,93 +336,9 @@ fn lock_html(locked: &Locked, hint: Option<&str>) -> String {
     html
 }
 
-/// Escape text for safe inclusion in HTML.
-fn escape_html(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(ch),
-        }
-    }
-    out
-}
+const LOCK_CSS: &str = include_str!("../assets/lock.css");
 
-const LOCK_STYLE: &str = "<style>\
-.typost-lock{max-width:26rem;margin:3rem auto;padding:1.5rem;text-align:center;\
-background:var(--surface,#32302f);border:1px solid var(--surface-2,#3c3836);\
-border-radius:var(--radius,10px);box-shadow:0 12px 32px -24px rgba(0,0,0,.8)}\
-.typost-lock-hint{margin:0 0 1rem;color:var(--fg-dim,#a89984);font-size:.95rem}\
-.typost-lock form{display:flex;flex-direction:column;gap:.6rem}\
-.typost-lock input{width:100%;box-sizing:border-box;padding:.6rem .8rem;\
-background:var(--bg-soft,#282828);color:var(--fg,#d4be98);\
-border:1px solid var(--border,#504945);border-radius:8px;font:inherit;outline:none}\
-.typost-lock input:focus{border-color:var(--accent,#a9b665)}\
-.typost-lock button{padding:.6rem 1.2rem;border:0;border-radius:8px;\
-cursor:pointer;background:var(--accent,#a9b665);color:var(--bg,#1d2021);\
-font:inherit;font-weight:600}\
-.typost-lock button:hover{opacity:.9}\
-.typost-lock-error{margin:.2rem 0 0;color:var(--red,#ea6962);font-size:.9rem}\
-</style>";
-
-const LOCK_SCRIPT: &str = r#"
-(function () {
-  var lock = document.currentScript.closest('.typost-lock');
-  if (!lock) return;
-  var params = JSON.parse(lock.querySelector('.typost-lock-params').textContent);
-  var cipherB64 = lock.querySelector('.typost-lock-cipher').textContent.trim();
-  var form = lock.querySelector('form');
-  var input = lock.querySelector('.typost-lock-password');
-  var error = lock.querySelector('.typost-lock-error');
-  function bytes(b64) {
-    return Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); });
-  }
-  if (!window.crypto || !window.crypto.subtle) {
-    error.hidden = false;
-    error.textContent = 'WebCrypto is unavailable; serve this site over http(s).';
-    return;
-  }
-  form.addEventListener('submit', function (event) {
-    event.preventDefault();
-    error.hidden = true;
-    var encoder = new TextEncoder();
-    window.crypto.subtle
-      .importKey('raw', encoder.encode(input.value), 'PBKDF2', false, ['deriveKey'])
-      .then(function (material) {
-        return window.crypto.subtle.deriveKey(
-          { name: 'PBKDF2', salt: bytes(params.salt), iterations: params.iterations, hash: 'SHA-256' },
-          material,
-          { name: 'AES-GCM', length: 256 },
-          false,
-          ['decrypt']
-        );
-      })
-      .then(function (key) {
-        return window.crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: bytes(params.iv) },
-          key,
-          bytes(cipherB64)
-        );
-      })
-      .then(function (plain) {
-        var holder = document.createElement('div');
-        holder.innerHTML = new TextDecoder().decode(plain);
-        var parent = lock.parentNode;
-        while (holder.firstChild) parent.insertBefore(holder.firstChild, lock);
-        parent.removeChild(lock);
-      })
-      .catch(function () {
-        error.hidden = false;
-        error.textContent = 'Wrong password.';
-        input.select();
-      });
-  });
-})();
-"#;
+const LOCK_SCRIPT: &str = include_str!("../assets/lock.js");
 
 #[cfg(test)]
 mod tests {

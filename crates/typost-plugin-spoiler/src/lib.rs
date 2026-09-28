@@ -6,6 +6,7 @@
 //! plugin.
 
 use anyhow::Result;
+use typost_core::html::inject_head;
 use typost_core::{Plugin, RenderOutput, SiteManifest, TypstOverlay};
 
 /// The class put on the rendered spoiler element.
@@ -37,11 +38,15 @@ impl Plugin for Spoiler {
     }
 
     fn typst(&self, overlay: &mut TypstOverlay) -> Result<()> {
-        overlay.add("lib/typost/spoiler.typ", SPOILER_TYP);
+        overlay.add("lib/typost/spoiler.typ", SPOILER_TYP)?;
         Ok(())
     }
 
     fn post(&self, out: &mut RenderOutput, _manifest: &SiteManifest) -> Result<()> {
+        let snippet = format!(
+            "<style class=\"{STYLE_CLASS}\">{SPOILER_CSS}</style>\
+             <script class=\"{SCRIPT_CLASS}\">{SPOILER_JS}</script>"
+        );
         for (path, bytes) in out.files.iter_mut() {
             if !path.ends_with(".html") {
                 continue;
@@ -52,98 +57,27 @@ impl Plugin for Spoiler {
             if !html.contains(SPOILER_CLASS) || html.contains(STYLE_CLASS) {
                 continue;
             }
-            let Some(at) = html.rfind("</head>") else {
-                continue;
-            };
-            let mut updated =
-                String::with_capacity(html.len() + SPOILER_CSS.len() + SPOILER_JS.len() + 128);
-            updated.push_str(&html[..at]);
-            updated.push_str("<style class=\"");
-            updated.push_str(STYLE_CLASS);
-            updated.push_str("\">");
-            updated.push_str(SPOILER_CSS);
-            updated.push_str("</style><script class=\"");
-            updated.push_str(SCRIPT_CLASS);
-            updated.push_str("\">");
-            updated.push_str(SPOILER_JS);
-            updated.push_str("</script>");
-            updated.push_str(&html[at..]);
-            *bytes = updated.into_bytes();
+            let mut updated = html.to_owned();
+            if inject_head(&mut updated, &snippet) {
+                *bytes = updated.into_bytes();
+            }
         }
         Ok(())
     }
 }
 
 /// The plugin's Typst helper, materialized into `lib/typost/spoiler.typ`.
-const SPOILER_TYP: &str = r#"
-/// Hide `body` behind a spoiler.
-///
-/// Inline spoilers (the default) reveal on hover or keyboard focus:
-///
-/// ```typst
-/// The butler did it: #spoiler[Colonel Mustard, in the library].
-/// ```
-///
-/// Block spoilers (`block: true`) stay blurred behind a `hint`; clicking (or
-/// pressing enter) reveals them, and they stay revealed.
-///
-/// ```typst
-/// #spoiler(block: true)[
-///   ...a hidden block (paragraphs, lists, code, ...)...
-/// ]
-/// ```
-#let spoiler(body, block: false, hint: "click to reveal") = {
-  if block {
-    html.elem(
-      "div",
-      [
-        #html.elem("span", hint, attrs: (class: "typost-spoiler-hint"))
-        #html.elem("div", body, attrs: (class: "typost-spoiler-content"))
-      ],
-      attrs: (class: "typost-spoiler-block", tabindex: "0"),
-    )
-  } else {
-    html.elem("span", body, attrs: (class: "typost-spoiler", tabindex: "0"))
-  }
-}
-"#;
+const SPOILER_TYP: &str = include_str!("../typst/spoiler.typ");
 
 /// The stylesheet injected into pages that use a spoiler.
 ///
 /// Kept in sync with `theme.css` conventions: the variables fall back to
 /// gruvbox-material values so the plugin works on any theme.
-const SPOILER_CSS: &str = "\
-.typost-spoiler{color:transparent;background:var(--spoiler-bg,rgba(146,131,116,.3));\
-border-radius:.25em;padding:0 .3em;cursor:help;transition:color .15s ease,\
-background-color .15s ease;-webkit-user-select:none;user-select:none}\
-.typost-spoiler:hover,.typost-spoiler:focus-visible{color:inherit;\
-background:var(--spoiler-bg-revealed,transparent);-webkit-user-select:text;\
-user-select:text}\
-.typost-spoiler-block{position:relative;margin:1em 0;cursor:pointer}\
-.typost-spoiler-content{filter:blur(var(--spoiler-blur,.4em));\
-transition:filter .2s ease}\
-.typost-spoiler-hint{position:absolute;top:50%;left:50%;\
-transform:translate(-50%,-50%);z-index:1;padding:.35em .9em;border-radius:999px;\
-background:var(--spoiler-hint-bg,rgba(29,32,33,.85));\
-border:1px solid var(--spoiler-border,rgba(146,131,116,.5));\
-color:var(--spoiler-hint,var(--fg-dim,#a89984));font-size:.85rem;white-space:nowrap;\
-pointer-events:none;-webkit-user-select:none;user-select:none;\
-transition:opacity .2s ease}\
-.typost-spoiler-block.is-revealed{cursor:auto}\
-.typost-spoiler-block.is-revealed .typost-spoiler-content{filter:none}\
-.typost-spoiler-block.is-revealed .typost-spoiler-hint{opacity:0}";
+const SPOILER_CSS: &str = include_str!("../assets/spoiler.css");
 
 /// The script injected into pages that use a spoiler: it reveals a block on the
 /// first click (or enter/space) and never hides it again.
-const SPOILER_JS: &str = "\
-(function(){function init(){document.querySelectorAll('.typost-spoiler-block')\
-.forEach(function(block){function reveal(){block.classList.add('is-revealed')}\
-block.addEventListener('click',reveal,{once:true});\
-block.addEventListener('keydown',function(event){\
-if(block.classList.contains('is-revealed'))return;\
-if(event.key==='Enter'||event.key===' '){event.preventDefault();reveal()}})})}\
-if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init)}\
-else{init()}})();";
+const SPOILER_JS: &str = include_str!("../assets/spoiler.js");
 
 #[cfg(test)]
 mod tests {

@@ -2598,6 +2598,7 @@ name = "typost-plugin-feed"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde",
  "typost-core",
 ]
 
@@ -2606,6 +2607,7 @@ name = "typost-plugin-sitemap"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde",
  "typost-core",
 ]
 

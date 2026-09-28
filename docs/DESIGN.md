@@ -182,16 +182,24 @@ pub trait Plugin: Send + Sync {
 }
 ```
 
-Plugins are registered in Rust, in `typost/src/main.rs::register_plugins`, and
-receive their options from `typost.toml`:
+Plugins are registered in Rust, in `typost/src/main.rs::register_plugins`. Each
+plugin owns its own `Config` (a serde type deserialized from its `typost.toml`
+table) and a `build(global_base_url)` constructor, so adding a plugin option
+does not touch the CLI:
 
 ```rust
 let mut site = site;
 if let Some(sitemap) = &config.sitemap {
-    site = site.plugin(Sitemap::new(&sitemap.base_url));
+    site = site.plugin(sitemap.build(config.base_url.as_deref())?);
+}
+if let Some(feed) = &config.feed {
+    site = site.plugin(feed.build(config.base_url.as_deref())?);
 }
 site
 ```
+
+The CLI's `Config` only owns the engine fields (`entry`, `out`, and the shared
+`base_url`) plus `Option<PluginConfig>` for each plugin it wires.
 
 ## Helper library
 
@@ -208,6 +216,8 @@ always come from local materialization.
 ## Config
 
 - Engine/plugin configuration: `typost.toml`.
+- Each plugin owns the `Config` type for its `[section]`, next to its
+  implementation.
 - Site/page/section metadata: arguments to `site` and `page` (front matter,
   carried in the `typost` metadata).
 

@@ -1,6 +1,7 @@
 //! A `sitemap.xml` plugin.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use serde::Deserialize;
 use typost_core::{Plugin, RenderOutput, SiteManifest};
 
 /// Emits `sitemap.xml` listing every rendered HTML page.
@@ -23,6 +24,26 @@ impl Sitemap {
     }
 }
 
+/// `[sitemap]` in `typost.toml`.
+#[derive(Debug, Default, Deserialize)]
+pub struct Config {
+    /// Overrides the top-level `base_url`.
+    #[serde(default)]
+    pub base_url: Option<String>,
+}
+
+impl Config {
+    /// Build the plugin, resolving the base URL from this section or the
+    /// top-level one.
+    pub fn build(&self, global_base_url: Option<&str>) -> Result<Sitemap> {
+        let base =
+            self.base_url.as_deref().or(global_base_url).context(
+                "`[sitemap]` needs a base URL (set `base_url` top-level or in `[sitemap]`)",
+            )?;
+        Ok(Sitemap::new(base))
+    }
+}
+
 impl Plugin for Sitemap {
     fn name(&self) -> &str {
         "sitemap"
@@ -41,7 +62,7 @@ impl Plugin for Sitemap {
             }
             let loc = format!("{base}/{}", path.trim_start_matches('/'));
             xml.push_str("  <url><loc>");
-            xml.push_str(&escape(&loc));
+            xml.push_str(&typost_core::html::escape(&loc));
             xml.push_str("</loc></url>\n");
         }
         xml.push_str("</urlset>\n");
@@ -49,22 +70,6 @@ impl Plugin for Sitemap {
         out.insert("sitemap.xml", xml.into_bytes());
         Ok(())
     }
-}
-
-/// Minimal XML text escaping for URLs.
-fn escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }
 
 #[cfg(test)]

@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use anyhow::{Result, anyhow};
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime, Duration};
 use typst::syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot};
@@ -48,11 +49,12 @@ pub struct TypostWorld {
 impl TypostWorld {
     /// Create a world for the given project root and entry file (relative to
     /// the root), with the plugins' Typst overlay applied.
-    pub fn new(root: PathBuf, entry: &str, overlay: TypstOverlay) -> Self {
+    pub fn new(root: PathBuf, entry: &str, overlay: TypstOverlay) -> Result<Self> {
         let mut fonts = FontStore::new();
         fonts.extend(fonts::embedded());
 
-        let entry = VirtualPath::new(entry).expect("entry path must be valid");
+        let entry = VirtualPath::new(entry)
+            .map_err(|err| anyhow!("invalid entry path `{entry}`: {err:?}"))?;
         let main = RootedPath::new(VirtualRoot::Project, entry).intern();
 
         let library = Library::builder()
@@ -63,13 +65,13 @@ impl TypostWorld {
             root,
             overlay: overlay.files,
         };
-        Self {
+        Ok(Self {
             library: LazyHash::from(library),
             fonts,
             main,
             store: FileStore::new(loader),
             today: Time::system(),
-        }
+        })
     }
 }
 

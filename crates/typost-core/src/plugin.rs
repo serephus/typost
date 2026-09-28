@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use typst::foundations::Bytes;
 use typst::syntax::VirtualPath;
 
@@ -27,9 +27,13 @@ impl TypstOverlay {
     }
 
     /// Add a Typst source file at the given project-relative path.
-    pub fn add(&mut self, path: &str, source: impl Into<String>) {
-        let vpath = VirtualPath::new(path).expect("overlay path must be valid");
+    ///
+    /// Errors if `path` is not a valid project-relative path.
+    pub fn add(&mut self, path: &str, source: impl Into<String>) -> Result<()> {
+        let vpath = VirtualPath::new(path)
+            .map_err(|err| anyhow!("invalid overlay path `{path}`: {err:?}"))?;
         self.files.insert(vpath, Bytes::from_string(source.into()));
+        Ok(())
     }
 }
 

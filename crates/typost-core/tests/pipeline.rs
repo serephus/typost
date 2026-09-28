@@ -43,7 +43,7 @@ impl Plugin for Marker {
   html.elem("span", value, attrs: (class: "test-marker"))
 }
 "#,
-        );
+        )?;
         Ok(())
     }
 }
