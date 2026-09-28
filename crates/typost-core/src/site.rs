@@ -107,8 +107,8 @@ pub fn build(options: &BuildOptions, plugins: &[Box<dyn Plugin>]) -> Result<()> 
             .with_context(|| format!("plugin `{}` failed in its `post` stage", plugin.name()))?;
     }
 
-    // 7. Write everything to disk.
-    emit(&output, &options.out)?;
+    // 7. Write everything to disk, replacing any previous build.
+    emit(&output, &options.root, &options.out)?;
     Ok(())
 }
 
@@ -349,8 +349,9 @@ fn is_tag_boundary(text: &str, tag: &str) -> bool {
     )
 }
 
-/// Write the rendered files to disk.
-fn emit(output: &RenderOutput, dir: &Path) -> Result<()> {
+/// Write the rendered files to disk, replacing any previous build.
+fn emit(output: &RenderOutput, root: &Path, dir: &Path) -> Result<()> {
+    clean(dir, root)?;
     for (path, bytes) in &output.files {
         let full = dir.join(path);
         if let Some(parent) = full.parent() {
@@ -360,6 +361,32 @@ fn emit(output: &RenderOutput, dir: &Path) -> Result<()> {
         std::fs::write(&full, bytes)
             .with_context(|| format!("failed to write `{}`", full.display()))?;
     }
+    Ok(())
+}
+
+/// Remove a previous build's output directory.
+///
+/// Refuses to delete the project root or any ancestor of it, so a misconfigured
+/// `out` cannot wipe the sources.
+fn clean(dir: &Path, root: &Path) -> Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    let dir = dir
+        .canonicalize()
+        .with_context(|| format!("failed to resolve `{}`", dir.display()))?;
+    let root = root
+        .canonicalize()
+        .with_context(|| format!("failed to resolve `{}`", root.display()))?;
+    if root.starts_with(&dir) {
+        bail!(
+            "refusing to clean `{}`: it contains the project root `{}`",
+            dir.display(),
+            root.display()
+        );
+    }
+    std::fs::remove_dir_all(&dir)
+        .with_context(|| format!("failed to clean `{}`", dir.display()))?;
     Ok(())
 }
 
@@ -381,7 +408,20 @@ fn format_diagnostics(diags: &[SourceDiagnostic]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::relocate_endnotes;
+    use super::{clean, relocate_endnotes};
+
+    #[test]
+    fn clean_refuses_the_project_root() {
+        let dir = std::env::temp_dir().join(format!("typost-clean-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let error = clean(&dir, &dir).expect_err("should refuse the root");
+        assert!(format!("{error:?}").contains("refusing"));
+        assert!(dir.exists(), "the root must be left alone");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn moves_endnotes_into_content_region() {
