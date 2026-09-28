@@ -6,8 +6,8 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use typost_core::{BuildOptions, Site};
 use typost_plugin_encrypt::Encrypt;
-use typost_plugin_feed::Feed;
-use typost_plugin_sitemap::Sitemap;
+use typost_plugin_feed::Config as FeedConfig;
+use typost_plugin_sitemap::Config as SitemapConfig;
 use typost_plugin_spoiler::Spoiler;
 use typost_plugin_taxonomies::Taxonomies;
 
@@ -27,47 +27,6 @@ struct Config {
     /// Optional Atom feed plugin configuration.
     #[serde(default)]
     feed: Option<FeedConfig>,
-}
-
-impl Config {
-    /// Resolve a plugin's base URL: its own override, then the top-level one.
-    fn base_url<'a>(&'a self, override_url: Option<&'a str>) -> Option<&'a str> {
-        override_url.or(self.base_url.as_deref())
-    }
-}
-
-/// `[sitemap]` in `typost.toml`.
-#[derive(Debug, Deserialize)]
-struct SitemapConfig {
-    /// Overrides the top-level `base_url`.
-    #[serde(default)]
-    base_url: Option<String>,
-}
-
-/// `[feed]` in `typost.toml`.
-#[derive(Debug, Deserialize)]
-struct FeedConfig {
-    /// Overrides the top-level `base_url`.
-    #[serde(default)]
-    base_url: Option<String>,
-    /// The feed's output path (default `atom.xml`).
-    #[serde(default)]
-    path: Option<String>,
-    /// The maximum number of entries (default 20).
-    #[serde(default)]
-    limit: Option<usize>,
-    /// The front-matter `section` to include (default `post`).
-    #[serde(default)]
-    section: Option<String>,
-    /// The feed title (defaults to the site title).
-    #[serde(default)]
-    title: Option<String>,
-    /// The feed subtitle.
-    #[serde(default)]
-    description: Option<String>,
-    /// The feed author name.
-    #[serde(default)]
-    author: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -138,36 +97,11 @@ fn register_plugins(site: Site, config: &Config) -> Result<Site> {
     site = site.plugin(Spoiler::new());
 
     if let Some(sitemap) = &config.sitemap {
-        let base = config
-            .base_url(sitemap.base_url.as_deref())
-            .context("`[sitemap]` needs a base URL (set `base_url` top-level or in `[sitemap]`)")?;
-        site = site.plugin(Sitemap::new(base));
+        site = site.plugin(sitemap.build(config.base_url.as_deref())?);
     }
 
     if let Some(feed) = &config.feed {
-        let base = config
-            .base_url(feed.base_url.as_deref())
-            .context("`[feed]` needs a base URL (set `base_url` top-level or in `[feed]`)")?;
-        let mut plugin = Feed::new(base);
-        if let Some(path) = &feed.path {
-            plugin = plugin.path(path);
-        }
-        if let Some(limit) = feed.limit {
-            plugin = plugin.limit(limit);
-        }
-        if let Some(section) = &feed.section {
-            plugin = plugin.section(section);
-        }
-        if let Some(title) = &feed.title {
-            plugin = plugin.title(title);
-        }
-        if let Some(description) = &feed.description {
-            plugin = plugin.description(description);
-        }
-        if let Some(author) = &feed.author {
-            plugin = plugin.author(author);
-        }
-        site = site.plugin(plugin);
+        site = site.plugin(feed.build(config.base_url.as_deref())?);
     }
 
     Ok(site)

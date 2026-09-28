@@ -10,3 +10,4 @@ repository.workspace = true
 [dependencies]
 typost-core = { path = "../typost-core" }
 anyhow.workspace = true
+serde.workspace = true

@@ -1,6 +1,7 @@
 //! A `sitemap.xml` plugin.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use serde::Deserialize;
 use typost_core::{Plugin, RenderOutput, SiteManifest};
 
 /// Emits `sitemap.xml` listing every rendered HTML page.
@@ -20,6 +21,26 @@ impl Sitemap {
         Self {
             base_url: base_url.into(),
         }
+    }
+}
+
+/// `[sitemap]` in `typost.toml`.
+#[derive(Debug, Default, Deserialize)]
+pub struct Config {
+    /// Overrides the top-level `base_url`.
+    #[serde(default)]
+    pub base_url: Option<String>,
+}
+
+impl Config {
+    /// Build the plugin, resolving the base URL from this section or the
+    /// top-level one.
+    pub fn build(&self, global_base_url: Option<&str>) -> Result<Sitemap> {
+        let base =
+            self.base_url.as_deref().or(global_base_url).context(
+                "`[sitemap]` needs a base URL (set `base_url` top-level or in `[sitemap]`)",
+            )?;
+        Ok(Sitemap::new(base))
     }
 }
 

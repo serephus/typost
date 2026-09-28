@@ -7,7 +7,8 @@
 //! content. Register it after `Encrypt` so that encrypted posts contribute
 //! ciphertext rather than plaintext.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use serde::Deserialize;
 use typost_core::{FrontMatter, PageMeta, Plugin, RenderOutput, SiteManifest};
 
 /// The default feed file name.
@@ -79,6 +80,63 @@ impl Feed {
     pub fn author(mut self, author: impl Into<String>) -> Self {
         self.author = Some(author.into());
         self
+    }
+}
+
+/// `[feed]` in `typost.toml`.
+#[derive(Debug, Default, Deserialize)]
+pub struct Config {
+    /// Overrides the top-level `base_url`.
+    #[serde(default)]
+    pub base_url: Option<String>,
+    /// The feed's output path (default `atom.xml`).
+    #[serde(default)]
+    pub path: Option<String>,
+    /// The maximum number of entries (default 20).
+    #[serde(default)]
+    pub limit: Option<usize>,
+    /// The front-matter `section` to include (default `post`).
+    #[serde(default)]
+    pub section: Option<String>,
+    /// The feed title (defaults to the site title).
+    #[serde(default)]
+    pub title: Option<String>,
+    /// The feed subtitle.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// The feed author name.
+    #[serde(default)]
+    pub author: Option<String>,
+}
+
+impl Config {
+    /// Build the plugin from this section and the top-level base URL.
+    pub fn build(&self, global_base_url: Option<&str>) -> Result<Feed> {
+        let base = self
+            .base_url
+            .as_deref()
+            .or(global_base_url)
+            .context("`[feed]` needs a base URL (set `base_url` top-level or in `[feed]`)")?;
+        let mut feed = Feed::new(base);
+        if let Some(path) = &self.path {
+            feed = feed.path(path);
+        }
+        if let Some(limit) = self.limit {
+            feed = feed.limit(limit);
+        }
+        if let Some(section) = &self.section {
+            feed = feed.section(section);
+        }
+        if let Some(title) = &self.title {
+            feed = feed.title(title);
+        }
+        if let Some(description) = &self.description {
+            feed = feed.description(description);
+        }
+        if let Some(author) = &self.author {
+            feed = feed.author(author);
+        }
+        Ok(feed)
     }
 }
 
