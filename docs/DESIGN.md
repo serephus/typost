@@ -319,19 +319,26 @@ plaintext. `base_url` is shared with `Sitemap` via the top-level config key.
 
 ## Spoiler (plugin)
 
-Contributes `lib/typost/spoiler.typ` with `#spoiler[...]`, which reveals content
-on hover or keyboard focus. An inline run is hidden with a translucent hint;
-`block: true` hides a whole block by blurring it, so code, images, and lists are
-covered too:
+Contributes `lib/typost/spoiler.typ` with `#spoiler[...]`:
+
+- **Inline** (default) — a translucent hint revealed on hover or keyboard
+  focus.
+- **Block** (`block: true`) — stays blurred behind a "click to reveal" pill;
+  clicking (or Enter/Space) reveals it, and it stays revealed (mouse-out does
+  not hide it again).
 
 ```typst
 The butler did it: #spoiler[Colonel Mustard, in the library].
+
+#spoiler(block: true)[ ...a hidden block... ]
 ```
 
-It is a `post` plugin with a small self-contained stylesheet: it injects the
-`<style>` into the `<head>` of every page that contains a spoiler. The look is
-themed through `--spoiler-bg`, `--spoiler-bg-revealed`, and `--spoiler-blur`,
-with gruvbox fallbacks.
+It is a `post` plugin with a small self-contained stylesheet and script: it
+injects both into the `<head>` of every page that contains a spoiler. The script
+adds `is-revealed` on the first click and never removes it. The look is themed
+through `--spoiler-bg`, `--spoiler-bg-revealed`, `--spoiler-blur`,
+`--spoiler-hint`, `--spoiler-hint-bg`, and `--spoiler-border`, with gruvbox
+fallbacks.
 
 ## Decisions
 
