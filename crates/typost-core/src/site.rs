@@ -84,7 +84,7 @@ pub fn build(options: &BuildOptions, plugins: &[Box<dyn Plugin>]) -> Result<()> 
     let overlay = collect_typst(plugins)?;
     materialize_overlay(&options.root, &overlay)?;
 
-    let world = TypostWorld::new(options.root.clone(), &options.entry, overlay);
+    let world = TypostWorld::new(options.root.clone(), &options.entry, overlay)?;
 
     // 3. Eval-only pass: lift the typed manifest out of the Typst program.
     let mut manifest = extract_manifest(&world)
@@ -118,7 +118,7 @@ pub fn build(options: &BuildOptions, plugins: &[Box<dyn Plugin>]) -> Result<()> 
 /// plugin can override a stdlib file if it needs to.
 pub fn collect_typst(plugins: &[Box<dyn Plugin>]) -> Result<TypstOverlay> {
     let mut overlay = TypstOverlay::new();
-    crate::stdlib::add_to(&mut overlay);
+    crate::stdlib::add_to(&mut overlay)?;
     for plugin in plugins {
         plugin
             .typst(&mut overlay)
@@ -170,7 +170,11 @@ fn extract_manifest(world: &TypostWorld) -> Result<SiteManifest> {
 
     let content = module.content();
     let mut manifest = SiteManifest::default();
-    walk(&content, None, &mut manifest);
+    let mut problems = Vec::new();
+    walk(&content, None, &mut manifest, &mut problems);
+    for problem in &problems {
+        eprintln!("warning: {problem}");
+    }
 
     let warnings = sink.warnings();
     if !warnings.is_empty() {
@@ -182,28 +186,38 @@ fn extract_manifest(world: &TypostWorld) -> Result<SiteManifest> {
 
 /// Walk evaluated content, collecting `typost` metadata. Entries inside a
 /// `document` are tagged with that document's route.
-fn walk(content: &Content, route: Option<&str>, manifest: &mut SiteManifest) {
+fn walk(
+    content: &Content,
+    route: Option<&str>,
+    manifest: &mut SiteManifest,
+    problems: &mut Vec<String>,
+) {
     if let Some(metadata) = content.to_packed::<MetadataElem>() {
-        parse_metadata(metadata, route, manifest);
+        parse_metadata(metadata, route, manifest, problems);
     }
 
     if let Some(document) = content.to_packed::<DocumentElem>() {
         let doc_route = document.path.as_ref().get_without_slash().to_owned();
-        walk(&document.body, Some(&doc_route), manifest);
+        walk(&document.body, Some(&doc_route), manifest, problems);
     } else {
         for (_, value) in content.fields() {
-            walk_value(value, route, manifest);
+            walk_value(value, route, manifest, problems);
         }
     }
 }
 
 /// Walk a field value (content or an array of them).
-fn walk_value(value: Value, route: Option<&str>, manifest: &mut SiteManifest) {
+fn walk_value(
+    value: Value,
+    route: Option<&str>,
+    manifest: &mut SiteManifest,
+    problems: &mut Vec<String>,
+) {
     match value {
-        Value::Content(content) => walk(&content, route, manifest),
+        Value::Content(content) => walk(&content, route, manifest, problems),
         Value::Array(array) => {
             for value in array {
-                walk_value(value, route, manifest);
+                walk_value(value, route, manifest, problems);
             }
         }
         _ => {}
@@ -215,6 +229,7 @@ fn parse_metadata(
     metadata: &Packed<MetadataElem>,
     route: Option<&str>,
     manifest: &mut SiteManifest,
+    problems: &mut Vec<String>,
 ) {
     let Value::Dict(outer) = &metadata.value else {
         return;
@@ -223,23 +238,34 @@ fn parse_metadata(
         return;
     };
     let Ok(Value::Str(kind)) = typost.get("kind") else {
+        problems.push("a `typost` metadata entry has no string `kind`".into());
         return;
     };
 
     match kind.as_str() {
-        "site" => {
-            if let Ok(Value::Str(title)) = typost.get("title") {
-                manifest.title = Some(title.as_str().to_owned());
-            }
-        }
+        "site" => match typost.get("title") {
+            Ok(Value::Str(title)) => manifest.title = Some(title.as_str().to_owned()),
+            Ok(Value::None) | Err(_) => {}
+            Ok(other) => problems.push(format!(
+                "the site `title` must be a string, found a `{}` value",
+                other.ty()
+            )),
+        },
         "page" => {
             let Ok(Value::Str(route)) = typost.get("route") else {
+                problems.push("a `page` entry has no string `route`".into());
                 return;
             };
             let data = typost
                 .get("data")
                 .map(FrontMatter::from_value)
                 .unwrap_or_default();
+            for (path, ty) in data.unsupported() {
+                problems.push(format!(
+                    "page `{route}`: front matter `{path}` is a `{ty}` value, \
+                     which typost cannot decode"
+                ));
+            }
             manifest.pages.push(PageMeta {
                 route: route.as_str().to_owned(),
                 src: None,

@@ -38,7 +38,7 @@ impl Plugin for Spoiler {
     }
 
     fn typst(&self, overlay: &mut TypstOverlay) -> Result<()> {
-        overlay.add("lib/typost/spoiler.typ", SPOILER_TYP);
+        overlay.add("lib/typost/spoiler.typ", SPOILER_TYP)?;
         Ok(())
     }
 

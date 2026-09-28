@@ -58,7 +58,7 @@ impl Plugin for Encrypt {
     }
 
     fn typst(&self, overlay: &mut TypstOverlay) -> Result<()> {
-        overlay.add("lib/typost/encrypted.typ", ENCRYPTED_TYP);
+        overlay.add("lib/typost/encrypted.typ", ENCRYPTED_TYP)?;
         Ok(())
     }
 

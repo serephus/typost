@@ -36,7 +36,7 @@ impl Plugin for Taxonomies {
     }
 
     fn typst(&self, overlay: &mut TypstOverlay) -> Result<()> {
-        overlay.add("lib/typost/taxonomies.typ", TAXONOMIES_TYP);
+        overlay.add("lib/typost/taxonomies.typ", TAXONOMIES_TYP)?;
         Ok(())
     }
 }

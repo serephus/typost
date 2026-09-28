@@ -5,6 +5,8 @@
 //! that entries can import them by relative path — which keeps plain
 //! `typst compile`, Tinymist, and offline builds working.
 
+use anyhow::Result;
+
 /// The core stdlib, embedded at compile time.
 pub const STDLIB_TYP: &str = include_str!("../typst/typost.typ");
 
@@ -12,8 +14,9 @@ pub const STDLIB_TYP: &str = include_str!("../typst/typost.typ");
 pub const STDLIB_FILES: &[(&str, &str)] = &[("lib/typost.typ", STDLIB_TYP)];
 
 /// Add the embedded stdlib to an overlay.
-pub fn add_to(overlay: &mut crate::plugin::TypstOverlay) {
+pub fn add_to(overlay: &mut crate::plugin::TypstOverlay) -> Result<()> {
     for (path, source) in STDLIB_FILES {
-        overlay.add(path, *source);
+        overlay.add(path, *source)?;
     }
+    Ok(())
 }
