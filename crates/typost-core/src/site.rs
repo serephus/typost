@@ -61,6 +61,12 @@ impl Site {
         self
     }
 
+    /// Register a list of boxed plugins (e.g. from the CLI).
+    pub fn plugins(mut self, plugins: Vec<Box<dyn Plugin>>) -> Self {
+        self.plugins.extend(plugins);
+        self
+    }
+
     /// Run the full pipeline.
     pub fn build(&self) -> Result<()> {
         build(&self.options, &self.plugins)
@@ -72,17 +78,10 @@ impl Site {
 /// `Config → typst → eval-only → prepare → render → post → emit`
 pub fn build(options: &BuildOptions, plugins: &[Box<dyn Plugin>]) -> Result<()> {
     // 1. Let plugins contribute Typst sources to the World (after the stdlib,
-    //    so plugins can override it if they need to).
-    let mut overlay = TypstOverlay::new();
-    crate::stdlib::add_to(&mut overlay);
-    for plugin in plugins {
-        plugin
-            .typst(&mut overlay)
-            .with_context(|| format!("plugin `{}` failed in its `typst` stage", plugin.name()))?;
-    }
-
-    // 2. Materialize the stdlib (and plugin Typst modules) into `lib/` so that
-    //    plain `typst` and Tinymist can resolve them.
+    //    so plugins can override it if they need to), and materialize the
+    //    combined overlay into `lib/` so plain `typst` and Tinymist can resolve
+    //    it.
+    let overlay = collect_typst(plugins)?;
     materialize_overlay(&options.root, &overlay)?;
 
     let world = TypostWorld::new(options.root.clone(), &options.entry, overlay);
@@ -111,6 +110,29 @@ pub fn build(options: &BuildOptions, plugins: &[Box<dyn Plugin>]) -> Result<()> 
     // 7. Write everything to disk.
     emit(&output, &options.out)?;
     Ok(())
+}
+
+/// Collect the Typst sources contributed by the stdlib and the plugins.
+///
+/// The stdlib is added first, then each plugin in registration order, so a
+/// plugin can override a stdlib file if it needs to.
+pub fn collect_typst(plugins: &[Box<dyn Plugin>]) -> Result<TypstOverlay> {
+    let mut overlay = TypstOverlay::new();
+    crate::stdlib::add_to(&mut overlay);
+    for plugin in plugins {
+        plugin
+            .typst(&mut overlay)
+            .with_context(|| format!("plugin `{}` failed in its `typst` stage", plugin.name()))?;
+    }
+    Ok(overlay)
+}
+
+/// Materialize the stdlib and plugin Typst sources into `<root>/lib`.
+///
+/// Shared by `typost build` and `typost init`, so editors see the same helpers
+/// before the first build.
+pub fn materialize_typst(root: &Path, plugins: &[Box<dyn Plugin>]) -> Result<()> {
+    materialize_overlay(root, &collect_typst(plugins)?)
 }
 
 /// Write plugin-contributed Typst sources to disk so editors can resolve them.

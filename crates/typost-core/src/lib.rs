@@ -14,6 +14,6 @@ pub mod world;
 
 pub use manifest::{FrontMatter, MetadataEntry, PageMeta, SiteManifest};
 pub use plugin::{Plugin, RenderOutput, TypstOverlay};
-pub use site::{BuildOptions, Site, build};
-pub use stdlib::{STDLIB_FILES, STDLIB_TYP, materialize as materialize_stdlib};
+pub use site::{BuildOptions, Site, build, collect_typst, materialize_typst};
+pub use stdlib::{STDLIB_FILES, STDLIB_TYP};
 pub use world::TypostWorld;

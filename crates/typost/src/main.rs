@@ -1,10 +1,10 @@
 //! The typost command-line interface.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
-use typost_core::{BuildOptions, Site};
+use typost_core::{BuildOptions, Plugin, Site};
 use typost_plugin_encrypt::Encrypt;
 use typost_plugin_feed::Config as FeedConfig;
 use typost_plugin_sitemap::Config as SitemapConfig;
@@ -52,18 +52,28 @@ fn init_cmd() -> Result<()> {
         println!("created `{}`", config_path.display());
     }
 
-    typost_core::materialize_stdlib(&root)?;
-    println!("materialized stdlib into `{}`", root.join("lib").display());
+    // Materialize the same Typst helpers a build would, so editors resolve them
+    // before the first build.
+    let config = read_config(&root)?;
+    typost_core::materialize_typst(&root, &plugins(&config)?)?;
+    println!(
+        "materialized the stdlib and plugin Typst into `{}`",
+        root.join("lib").display()
+    );
     Ok(())
+}
+
+/// Read and parse `<root>/typost.toml`.
+fn read_config(root: &Path) -> Result<Config> {
+    let path = root.join("typost.toml");
+    let text = std::fs::read_to_string(&path)
+        .with_context(|| format!("failed to read `{}`", path.display()))?;
+    toml::from_str(&text).with_context(|| format!("failed to parse `{}`", path.display()))
 }
 
 fn build_cmd() -> Result<()> {
     let root = std::env::current_dir().context("failed to determine current directory")?;
-    let config_path = root.join("typost.toml");
-    let text = std::fs::read_to_string(&config_path)
-        .with_context(|| format!("failed to read `{}`", config_path.display()))?;
-    let config: Config = toml::from_str(&text)
-        .with_context(|| format!("failed to parse `{}`", config_path.display()))?;
+    let config = read_config(&root)?;
 
     let options = BuildOptions {
         root: root.clone(),
@@ -71,7 +81,7 @@ fn build_cmd() -> Result<()> {
         out: root.join(&config.out),
     };
 
-    register_plugins(Site::new(options), &config)?.build()?;
+    Site::new(options).plugins(plugins(&config)?).build()?;
 
     println!(
         "built `{}` -> `{}`",
@@ -83,28 +93,28 @@ fn build_cmd() -> Result<()> {
 
 /// The compile-time plugin list. Register plugins here, in the order they
 /// should run. Plugin options come from `typost.toml`.
-fn register_plugins(site: Site, config: &Config) -> Result<Site> {
-    let mut site = site;
+fn plugins(config: &Config) -> Result<Vec<Box<dyn Plugin>>> {
+    let mut plugins: Vec<Box<dyn Plugin>> = Vec::new();
 
     // Pages opt in by declaring a `password` in their front matter.
-    site = site.plugin(Encrypt::new());
+    plugins.push(Box::new(Encrypt::new()));
 
     // Contributes the `typost.taxonomies` module; sites declare their
     // taxonomies (tags, categories, difficulty, ...) in Typst.
-    site = site.plugin(Taxonomies::new());
+    plugins.push(Box::new(Taxonomies::new()));
 
-    // Contributes `lib/typost/spoiler.typ` (`#spoiler[...]`) and its CSS.
-    site = site.plugin(Spoiler::new());
+    // Contributes `lib/typost/spoiler.typ` (`#spoiler[...]`) and its assets.
+    plugins.push(Box::new(Spoiler::new()));
 
     if let Some(sitemap) = &config.sitemap {
-        site = site.plugin(sitemap.build(config.base_url.as_deref())?);
+        plugins.push(Box::new(sitemap.build(config.base_url.as_deref())?));
     }
 
     if let Some(feed) = &config.feed {
-        site = site.plugin(feed.build(config.base_url.as_deref())?);
+        plugins.push(Box::new(feed.build(config.base_url.as_deref())?));
     }
 
-    Ok(site)
+    Ok(plugins)
 }
 
 fn print_help() {
@@ -115,7 +125,7 @@ USAGE:
     typost <COMMAND>
 
 COMMANDS:
-    init     Create typost.toml (if missing) and materialize the stdlib
+    init     Create typost.toml (if missing) and materialize the Typst helpers
     build    Build the site described by typost.toml
     help     Print this help
 
