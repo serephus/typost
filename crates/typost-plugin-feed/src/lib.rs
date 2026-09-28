@@ -9,6 +9,7 @@
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use typost_core::html::{content_region, escape, inject_head};
 use typost_core::{FrontMatter, PageMeta, Plugin, RenderOutput, SiteManifest};
 
 /// The default feed file name.
@@ -17,8 +18,6 @@ const DEFAULT_PATH: &str = "atom.xml";
 const DEFAULT_LIMIT: usize = 20;
 /// The default front-matter section to include.
 const DEFAULT_SECTION: &str = "post";
-/// The content-region marker emitted by the stdlib.
-const CONTENT_MARKER: &str = "id=\"typost-content\"";
 
 /// Generates an Atom feed.
 pub struct Feed {
@@ -256,10 +255,7 @@ fn page_url(base: &str, route: &str) -> String {
 /// Read a page's content region and make its root-relative URLs absolute.
 fn content_of(out: &RenderOutput, route: &str, base: &str) -> Option<String> {
     let html = std::str::from_utf8(out.get(route)?).ok()?;
-    let marker = html.find(CONTENT_MARKER)?;
-    let open_end = marker + html[marker..].find('>')? + 1;
-    let close = open_end + html[open_end..].find("</main>")?;
-    Some(absolutize(&html[open_end..close], base))
+    Some(absolutize(content_region(html)?, base))
 }
 
 /// Turn `="` + `/path` (but not `="//host`) into an absolute URL.
@@ -320,22 +316,6 @@ fn rfc3339(date: &str) -> String {
     }
 }
 
-/// Escape text for XML and HTML attributes.
-fn escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            _ => out.push(ch),
-        }
-    }
-    out
-}
-
 /// Add `<link rel="alternate">` to every HTML page's `<head>`.
 fn inject_head_link(out: &mut RenderOutput, href: &str, title: &str) {
     let tag = format!(
@@ -353,14 +333,10 @@ fn inject_head_link(out: &mut RenderOutput, href: &str, title: &str) {
         if html.contains("application/atom+xml") {
             continue;
         }
-        let Some(at) = html.rfind("</head>") else {
-            continue;
-        };
-        let mut updated = String::with_capacity(html.len() + tag.len());
-        updated.push_str(&html[..at]);
-        updated.push_str(&tag);
-        updated.push_str(&html[at..]);
-        *bytes = updated.into_bytes();
+        let mut updated = html.to_owned();
+        if inject_head(&mut updated, &tag) {
+            *bytes = updated.into_bytes();
+        }
     }
 }
 

@@ -338,7 +338,7 @@ fn lock_html(locked: &Locked, hint: Option<&str>) -> String {
     // default prompt is plain text and is escaped.
     let hint = match hint {
         Some(html) if !html.is_empty() => html.to_owned(),
-        _ => escape_html(DEFAULT_HINT),
+        _ => typost_core::html::escape(DEFAULT_HINT),
     };
 
     let mut html = String::with_capacity(
@@ -370,21 +370,6 @@ fn lock_html(locked: &Locked, hint: Option<&str>) -> String {
     html
 }
 
-/// Escape text for safe inclusion in HTML.
-fn escape_html(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(ch),
-        }
-    }
-    out
-}
 
 const LOCK_STYLE: &str = "<style>\
 .typost-lock{max-width:26rem;margin:3rem auto;padding:1.5rem;text-align:center;\

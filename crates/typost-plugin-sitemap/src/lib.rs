@@ -62,7 +62,7 @@ impl Plugin for Sitemap {
             }
             let loc = format!("{base}/{}", path.trim_start_matches('/'));
             xml.push_str("  <url><loc>");
-            xml.push_str(&escape(&loc));
+            xml.push_str(&typost_core::html::escape(&loc));
             xml.push_str("</loc></url>\n");
         }
         xml.push_str("</urlset>\n");
@@ -70,22 +70,6 @@ impl Plugin for Sitemap {
         out.insert("sitemap.xml", xml.into_bytes());
         Ok(())
     }
-}
-
-/// Minimal XML text escaping for URLs.
-fn escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }
 
 #[cfg(test)]

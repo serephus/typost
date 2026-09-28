@@ -6,6 +6,7 @@
 //! plugin.
 
 use anyhow::Result;
+use typost_core::html::inject_head;
 use typost_core::{Plugin, RenderOutput, SiteManifest, TypstOverlay};
 
 /// The class put on the rendered spoiler element.
@@ -42,6 +43,10 @@ impl Plugin for Spoiler {
     }
 
     fn post(&self, out: &mut RenderOutput, _manifest: &SiteManifest) -> Result<()> {
+        let snippet = format!(
+            "<style class=\"{STYLE_CLASS}\">{SPOILER_CSS}</style>\
+             <script class=\"{SCRIPT_CLASS}\">{SPOILER_JS}</script>"
+        );
         for (path, bytes) in out.files.iter_mut() {
             if !path.ends_with(".html") {
                 continue;
@@ -52,23 +57,10 @@ impl Plugin for Spoiler {
             if !html.contains(SPOILER_CLASS) || html.contains(STYLE_CLASS) {
                 continue;
             }
-            let Some(at) = html.rfind("</head>") else {
-                continue;
-            };
-            let mut updated =
-                String::with_capacity(html.len() + SPOILER_CSS.len() + SPOILER_JS.len() + 128);
-            updated.push_str(&html[..at]);
-            updated.push_str("<style class=\"");
-            updated.push_str(STYLE_CLASS);
-            updated.push_str("\">");
-            updated.push_str(SPOILER_CSS);
-            updated.push_str("</style><script class=\"");
-            updated.push_str(SCRIPT_CLASS);
-            updated.push_str("\">");
-            updated.push_str(SPOILER_JS);
-            updated.push_str("</script>");
-            updated.push_str(&html[at..]);
-            *bytes = updated.into_bytes();
+            let mut updated = html.to_owned();
+            if inject_head(&mut updated, &snippet) {
+                *bytes = updated.into_bytes();
+            }
         }
         Ok(())
     }

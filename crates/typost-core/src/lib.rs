@@ -6,6 +6,7 @@
 //! program, the [`Plugin`] trait, and the build pipeline. Everything optional
 //! lives in plugins.
 
+pub mod html;
 pub mod manifest;
 pub mod plugin;
 pub mod site;
