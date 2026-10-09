@@ -12,7 +12,5 @@
 #include "pages/about.typ"
 #include "pages/blog.typ"
 
-#include "posts/structure-in-typst.typ"
-#include "posts/collections-and-functions.typ"
-#include "posts/notes-on-html-export.typ"
-#include "posts/secret-notes.typ"
+#include "posts/design.typ"
+#include "posts/tour.typ"

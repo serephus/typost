@@ -25,6 +25,9 @@ pub struct BuildOptions {
     pub entry: String,
     /// The output directory.
     pub out: PathBuf,
+    /// The URL path the site is served under (e.g. `/typost` for a GitHub
+    /// Pages project page). Empty means the site root.
+    pub base: String,
 }
 
 impl Default for BuildOptions {
@@ -33,6 +36,7 @@ impl Default for BuildOptions {
             root: PathBuf::from("."),
             entry: "home.typ".to_owned(),
             out: PathBuf::from("dist"),
+            base: String::new(),
         }
     }
 }
@@ -107,7 +111,9 @@ pub fn build(options: &BuildOptions, plugins: &[Box<dyn Plugin>]) -> Result<()> 
             .with_context(|| format!("plugin `{}` failed in its `post` stage", plugin.name()))?;
     }
 
-    // 7. Write everything to disk, replacing any previous build.
+    // 7. Rewrite root-absolute URLs for the site's base path (a Pages project
+    //    page lives under `/<repo>`), then write everything to disk.
+    apply_base(&mut output, &options.base);
     emit(&output, &options.root, &options.out)?;
     Ok(())
 }
@@ -375,6 +381,75 @@ fn is_tag_boundary(text: &str, tag: &str) -> bool {
     )
 }
 
+/// Rewrite root-absolute URLs in exported HTML for the site's base path.
+///
+/// Runs after the plugins, so it also catches URLs they inject (for example
+/// the feed's `<link>`). Content inside `<pre>`/`<code>` is left alone, so a
+/// code sample that happens to contain `href="/…"` is not rewritten.
+fn apply_base(output: &mut RenderOutput, base: &str) {
+    let base = base.trim_end_matches('/');
+    if base.is_empty() {
+        return;
+    }
+    for (path, bytes) in output.files.iter_mut() {
+        if !path.ends_with(".html") {
+            continue;
+        }
+        if let Ok(html) = std::str::from_utf8(bytes) {
+            *bytes = prefix_urls(html, base).into_bytes();
+        }
+    }
+}
+
+/// Prefix root-absolute URLs with `base`, skipping code blocks.
+fn prefix_urls(html: &str, base: &str) -> String {
+    let mut out = String::with_capacity(html.len() + 64);
+    let mut rest = html;
+    loop {
+        let next = ["<pre", "<code"]
+            .iter()
+            .filter_map(|tag| rest.find(tag))
+            .min();
+        let Some(at) = next else {
+            out.push_str(&prefix_attrs(rest, base));
+            break;
+        };
+        out.push_str(&prefix_attrs(&rest[..at], base));
+        let tag = if rest[at..].starts_with("<pre") {
+            "</pre>"
+        } else {
+            "</code>"
+        };
+        let end = rest[at..]
+            .find(tag)
+            .map(|e| at + e + tag.len())
+            .unwrap_or(rest.len());
+        out.push_str(&rest[at..end]);
+        rest = &rest[end..];
+    }
+    out
+}
+
+/// Prefix the root-absolute `href`/`src` values in a fragment (not `//host`).
+fn prefix_attrs(html: &str, base: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some((at, attr)) = ["href=\"", "src=\""]
+        .iter()
+        .filter_map(|attr| rest.find(attr).map(|at| (at, *attr)))
+        .min_by_key(|(at, _)| *at)
+    {
+        out.push_str(&rest[..at + attr.len()]);
+        let after = &rest[at + attr.len()..];
+        if after.starts_with('/') && !after.starts_with("//") {
+            out.push_str(base);
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
 /// Write the rendered files to disk, replacing any previous build.
 fn emit(output: &RenderOutput, root: &Path, dir: &Path) -> Result<()> {
     clean(dir, root)?;
@@ -434,7 +509,24 @@ fn format_diagnostics(diags: &[SourceDiagnostic]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{clean, relocate_endnotes};
+    use super::{clean, prefix_urls, relocate_endnotes};
+
+    #[test]
+    fn prefixes_root_absolute_urls_but_not_code() {
+        let html = "<a href=\"/blog/\">b</a>\
+                    <link href=\"/atom.xml\">\
+                    <img src=\"/i.png\">\
+                    <pre>href=\"/x\"</pre>\
+                    <a href=\"//host\">h</a>";
+        assert_eq!(
+            prefix_urls(html, "/typost"),
+            "<a href=\"/typost/blog/\">b</a>\
+             <link href=\"/typost/atom.xml\">\
+             <img src=\"/typost/i.png\">\
+             <pre>href=\"/x\"</pre>\
+             <a href=\"//host\">h</a>"
+        );
+    }
 
     #[test]
     fn clean_refuses_the_project_root() {

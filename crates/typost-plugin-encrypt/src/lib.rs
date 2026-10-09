@@ -318,7 +318,7 @@ fn lock_html(locked: &Locked, hint: Option<&str>) -> String {
     html.push_str("</p>");
     html.push_str(
         "<input type=\"password\" class=\"typost-lock-password\" \
-         autocomplete=\"current-password\" placeholder=\"Password\" autofocus>",
+         autocomplete=\"current-password\" placeholder=\"Password\">",
     );
     html.push_str("<button type=\"submit\">Unlock</button>");
     html.push_str("<p class=\"typost-lock-error\" role=\"alert\" hidden>Wrong password.</p>");
@@ -527,6 +527,7 @@ mod tests {
             root: dir.clone(),
             entry: "home.typ".to_owned(),
             out: dir.join("dist"),
+            base: String::new(),
         };
         let plugins: Vec<Box<dyn Plugin>> = vec![Box::new(Encrypt::new())];
         let error =

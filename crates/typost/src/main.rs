@@ -71,6 +71,20 @@ fn read_config(root: &Path) -> Result<Config> {
     toml::from_str(&text).with_context(|| format!("failed to parse `{}`", path.display()))
 }
 
+/// The URL path of `base_url` (e.g. `/typost` for
+/// `https://user.github.io/typost`).
+///
+/// Root-absolute links in the output are prefixed with it, so the same site
+/// can be served from a project subpath. Empty means the site root.
+fn url_base(base_url: Option<&str>) -> String {
+    let Some(url) = base_url else {
+        return String::new();
+    };
+    let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let path = after_scheme.find('/').map_or("", |at| &after_scheme[at..]);
+    path.trim_end_matches('/').to_owned()
+}
+
 fn build_cmd() -> Result<()> {
     let root = std::env::current_dir().context("failed to determine current directory")?;
     let config = read_config(&root)?;
@@ -79,6 +93,7 @@ fn build_cmd() -> Result<()> {
         root: root.clone(),
         entry: config.entry.clone(),
         out: root.join(&config.out),
+        base: url_base(config.base_url.as_deref()),
     };
 
     Site::new(options).plugins(plugins(&config)?).build()?;
@@ -139,4 +154,24 @@ Plugin config example:
     [feed]
     limit = 20"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::url_base;
+
+    #[test]
+    fn extracts_the_url_path() {
+        assert_eq!(
+            url_base(Some("https://serephus.github.io/typost")),
+            "/typost"
+        );
+        assert_eq!(
+            url_base(Some("https://serephus.github.io/typost/")),
+            "/typost"
+        );
+        assert_eq!(url_base(Some("https://example.com")), "");
+        assert_eq!(url_base(Some("https://example.com/")), "");
+        assert_eq!(url_base(None), "");
+    }
 }
