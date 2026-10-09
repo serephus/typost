@@ -1,0 +1,9 @@
+entry = "main.typ"
+out = "dist"
+
+base_url = "https://typost.sereph.us/"
+
+[sitemap]
+
+[feed]
+section = "blog"

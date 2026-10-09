@@ -1,8 +1,8 @@
 name: Demo
 
 # Build the example site and publish it to GitHub Pages, which serves it at
-# https://serephus.github.io/typost/ — hence the example's base_url and the
-# base-path link rewriting in the build.
+# https://typost.sereph.us/
+
 on:
   push:
     branches: [main]
@@ -36,7 +36,7 @@ jobs:
         run: nix build
 
       - name: Build the example site
-        run: cd examples/site && ../../result/bin/typost build
+        run: cd examples/demo && ../../result/bin/typost build
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -44,7 +44,7 @@ jobs:
       - name: Upload the site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: examples/site/dist
+          path: examples/demo/dist
 
       - name: Deploy to GitHub Pages
         id: deployment
