@@ -211,7 +211,8 @@
   ]
   #inner
   #html.elem("footer", [
-    Made with #link("https://typst.app/", [Typst]) and typost.
+    Made with #link("https://typst.app/", [Typst]) and #link("https://github.com/serephus/typost", [typost]) ·
+    #link("https://github.com/serephus/typost/tree/main/examples/demo", [Source])
   ])
 ]
 
