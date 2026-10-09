@@ -1,7 +1,7 @@
 entry = "home.typ"
 out = "dist"
 
-base_url = "https://example.com"
+base_url = "https://serephus.github.io/typost"
 
 [sitemap]
 

@@ -80,6 +80,7 @@ fn build_pipeline_lifts_manifest_and_runs_plugins() {
         root: dir.clone(),
         entry: "home.typ".to_owned(),
         out: dir.join("dist"),
+        base: String::new(),
     };
     build(&options, &plugins).expect("build should succeed");
 

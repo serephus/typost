@@ -527,6 +527,7 @@ mod tests {
             root: dir.clone(),
             entry: "home.typ".to_owned(),
             out: dir.join("dist"),
+            base: String::new(),
         };
         let plugins: Vec<Box<dyn Plugin>> = vec![Box::new(Encrypt::new())];
         let error =

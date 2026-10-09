@@ -15,11 +15,10 @@
 This paragraph is public: anyone can read it.
 
 // Everything after this directive is encrypted, to the end of the file.
-#show: encrypted.with(
+encrypted(
   password: "hunter2",
   hint: [This note is *private* — ask me on #link("https://t.me/serephus")[Telegram].],
-)
-
+)[
 == The locked part
 
 This region is encrypted at build time and decrypted in the browser with
@@ -30,6 +29,7 @@ Unicode survives the round-trip too: 你好，世界 — café ☃.
 #callout[
   View the page source: the text below does not appear. Only the ciphertext
   and a small decrypt shim ship, for this region alone.
+]
 ]
 
 The password for this demo is `hunter2` (it is public, so it is only a
