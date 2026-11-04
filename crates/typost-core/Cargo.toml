@@ -11,7 +11,13 @@ repository.workspace = true
 typst.workspace = true
 typst-bundle.workspace = true
 typst-eval.workspace = true
-typst-kit = { workspace = true, features = ["datetime", "embedded-fonts"] }
+typst-kit = { workspace = true, features = [
+    "datetime",
+    "embedded-fonts",
+    "system-files",
+    "universe-packages",
+] }
+ureq.workspace = true
 comemo.workspace = true
 serde.workspace = true
 anyhow.workspace = true
