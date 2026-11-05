@@ -22,6 +22,7 @@ typst = "0.15.1"
 typst-bundle = "0.15.1"
 typst-eval = "0.15.1"
 typst-kit = "0.15.1"
+ureq = { version = "2", default-features = false, features = ["tls", "gzip"] }
 comemo = "0.5.1"
 serde = { version = "1", features = ["derive"] }
 toml = "1.1"

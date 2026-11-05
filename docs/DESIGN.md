@@ -213,6 +213,25 @@ be gitignored. Publishing the core stdlib to Typst Universe (`@preview/typost`)
 as an *optional* alternative is a later addition; plugin-provided modules
 always come from local materialization.
 
+## Third-party packages
+
+Pages, themes, and plugins can import any Typst Universe package with the usual
+syntax:
+
+```typst
+#import "@preview/oxifmt:1.0.0": strfmt
+```
+
+Packages use the same resolution as the `typst` CLI: `@local` packages come from
+the system data directory (for example `~/.local/share/typst/packages` on
+Linux), and `@preview` packages come from the cache directory (for example
+`~/.cache/typst/packages`), downloaded on first use from `packages.typst.org`
+and reused on later builds. Each package is a separate virtual root, so project
+imports and the in-memory plugin overlay cannot shadow its files. A build
+without network access can pre-populate the cache (running `typst compile` once
+on a connected machine does this); the import's version specifier pins the
+package.
+
 ## Config
 
 - Engine/plugin configuration: `typost.toml`.
