@@ -8,14 +8,13 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    naersk = {
-      url = "github:nix-community/naersk";
+    crate2nix = {
+      url = "github:nix-community/crate2nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nixit = {
       url = "github:serephus/nixit";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.naersk.follows = "naersk";
       inputs.flake-utils.follows = "flake-utils";
       inputs.rust-overlay.follows = "rust-overlay";
     };
@@ -26,7 +25,7 @@
       nixpkgs,
       flake-utils,
       rust-overlay,
-      naersk,
+      crate2nix,
       nixit,
       ...
     }:
@@ -116,21 +115,22 @@
           ];
         };
 
-        naersk' = pkgs.callPackage naersk { };
+        cargoNix = crate2nix.tools.${system}.appliedCargoNix {
+          name = "typost";
+          src = ./.;
+        };
 
-        # naersk builds the whole workspace; the resulting binary is `typost`.
-        typost = (naersk'.buildPackage { src = ./.; }).overrideAttrs (old: {
+        # crate2nix builds the workspace crate-by-crate; the binary is `typost`.
+        typost = (cargoNix.workspaceMembers.typost.build).overrideAttrs (old: {
           meta = (old.meta or { }) // {
             description = "A Typst-powered static site generator";
             mainProgram = "typost";
           };
         });
 
-        # `nix flake check` runs the workspace's unit tests.
-        tests = naersk'.buildPackage {
-          src = ./.;
-          doCheck = true;
-          cargoTestCommands = _: [ "cargo test --workspace" ];
+        # `nix flake check` compiles and runs the `typost` unit tests.
+        tests = (cargoNix.workspaceMembers.typost.build).override {
+          runTests = true;
         };
       in
       {
